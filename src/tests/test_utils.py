@@ -1,8 +1,8 @@
 import sympy as sp
 
-from pynform import get_leading_term_matrix
-from pynform.utils import get_coeffs, get_matrix_coeffs, Shift, get_col_lc_mat
-from pynform.signomial import Signomial
+from pyform import get_leading_term_matrix
+from pyform.utils import get_coeffs, get_matrix_coeffs, Shift, get_col_lc_mat
+from pyform.signomial import Signomial
 
 
 def test_get_coeff():
