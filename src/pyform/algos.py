@@ -5,7 +5,7 @@ import sympy as sp
 
 __all__ = ["sdiv", "gcdexs", "bezouts"]
 
-from pynf.signomial import Signomial
+from .signomial import Signomial
 
 
 def sdiv(x, y, gen=None):

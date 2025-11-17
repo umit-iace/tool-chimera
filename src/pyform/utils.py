@@ -4,7 +4,7 @@ import numpy as np
 import sympy as sp
 from sympy import PolynomialError
 
-from pynf.signomial import Signomial
+from .signomial import Signomial
 
 # seed using the 'cat ran over the keyboard' method
 rng = np.random.default_rng(56802470204575498132489694523498)
