@@ -12,7 +12,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "pynf",
+    "pyform",
     'pytest',
     'pytest-cov',
 ]
