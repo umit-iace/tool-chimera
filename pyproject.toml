@@ -1,0 +1,25 @@
+[project]
+name = "pyform"
+version = "0.1.0"
+description = "Routines for normal form computations"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.2.1",
+    "scipy>=1.15.1",
+    "sympy>=1.13.3",
+]
+
+[dependency-groups]
+dev = [
+    "pynf",
+    'pytest',
+    'pytest-cov',
+]
+
+[build-system]
+requires = ["uv_build>=0.8.22,<0.9.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+pynf = { workspace = true }
