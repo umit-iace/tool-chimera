@@ -13,10 +13,10 @@ from .genpoly import GenPoly
 
 
 def gcdexs(
-    f: sp.Expr, g: sp.Expr, s_gen, tol=1, max_iterations=100
+    f: sp.Expr, g: sp.Expr, gp_gen, tol=1, max_iterations=100
 ) -> tuple[sp.Expr, sp.Expr, sp.Expr]:
     """
-    Extension of sympys gcdex that will work with signomials
+    Extension of sympys gcdex that will work with generalized polynomials
 
     Returns ``(s, t, h)`` such that ``h = gcd(f, g)`` and ``s*f + t*g = h``
     """
@@ -28,11 +28,11 @@ def gcdexs(
 
     idx = 1
     while idx < max_iterations + 1:
-        q, r = gplde(h[idx - 1], h[idx], s_gen)
+        q, r = gplde(h[idx - 1], h[idx], gp_gen)
         q = q.to_expr()
 
         if r == 0:
-            # this is really unlikely to happen, exponents must be commensurable
+            # this is really unlikely to happen, since exponents must be commensurable for that
             # print("Remainder is zero, algorithm terminated.")
             break
 
@@ -491,3 +491,23 @@ def gplde(
     qe = make_entire(q, c_gen, gp_gen, gen_expr)
     re = x - qe * y
     return qe, re
+
+
+def get_column_reduction_transform(mat, col, p_gen, gp_gen, gp_expr):
+    l_mat = sp.Matrix.eye(mat.shape[0])
+    for i in range(col + 1, mat.shape[0]):
+        qe, re = gplde(mat[i, col], mat[col, col], p_gen, gp_gen, gp_expr)
+        l_mat[i, col] = -qe
+    return l_mat
+
+
+def reduce_matrix_shifts(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
+    bmat = copy(mat)
+    l_mat = sp.Matrix.eye(mat.shape[0])
+    for i in range(2, mat.shape[0]):
+        for j in range(1, mat.shape[0] - 1):
+            lc = get_column_reduction_transform(bmat, j, p_gen, gp_gen, sp.exp(p_gen))
+            bmat = lc @ bmat
+            l_mat = lc @ l_mat
+
+    return bmat, l_mat

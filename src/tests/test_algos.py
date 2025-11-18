@@ -1,6 +1,9 @@
 import sympy as sp
 
-from pyform import gpld, make_entire, GenPoly, gplde, check_singularities
+from pyform import GenPoly, check_singularities
+from pyform.algos import reduce_matrix_shifts, gpld, make_entire, gplde
+
+from utils import get_leading_column_degrees
 
 # generators
 sigma = sp.Symbol("sigma", positive=True)
@@ -81,6 +84,32 @@ def test_gplde():
         print("Checking for singularities in quotient and remainder:")
         for t in qe, re:
             check_singularities(t, s, sigma, sp.exp(s))
+
+
+def test_reduce_matrix_shifts():
+    a = 5 * s**3 + 2 * s**2 + 1 * s + 7
+    b = 1 * s**2 - 10 * s - 5
+    c = 3 * s - 1
+    d_mat = sp.Matrix(
+        [
+            [a, b, c],
+            [c, a, b],
+            [b, c, a],
+        ]
+    )
+    tau_m = [sp.sqrt(2), sp.sqrt(5), sp.sqrt(7)]
+    pred_mat = sp.Matrix.diag([sigma**tau for tau in tau_m])
+    tau_p = [0, -sp.sqrt(3), -sp.sqrt(9)]
+    delay_mat = sp.Matrix.diag([sigma**tau for tau in tau_p])
+    m = pred_mat @ d_mat + delay_mat @ d_mat
+
+    mr, l = reduce_matrix_shifts(m, s, sigma)
+    print(mr)
+    print(l)
+
+    cd = get_leading_column_degrees(mr, sigma)
+    for i in range(len(tau_m)):
+        assert cd[i] == tau_m[i]
 
 
 # def test_gcdexs():
