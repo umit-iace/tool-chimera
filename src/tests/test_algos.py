@@ -1,9 +1,8 @@
 import sympy as sp
 
-from pyform import GenPoly, check_singularities
+from pyform import GenPoly
 from pyform.algos import reduce_matrix_shifts, gpld, make_entire, gplde
-
-from utils import get_leading_column_degrees
+from pyform.utils import get_leading_column_degrees, check_singularities
 
 # generators
 sigma = sp.Symbol("sigma", positive=True)
@@ -103,9 +102,10 @@ def test_reduce_matrix_shifts():
     delay_mat = sp.Matrix.diag([sigma**tau for tau in tau_p])
     m = pred_mat @ d_mat + delay_mat @ d_mat
 
+    sp.pprint(m, wrap_line=False)
     mr, l = reduce_matrix_shifts(m, s, sigma)
-    print(mr)
-    print(l)
+    sp.pprint(mr)
+    sp.pprint(l)
 
     cd = get_leading_column_degrees(mr, sigma)
     for i in range(len(tau_m)):

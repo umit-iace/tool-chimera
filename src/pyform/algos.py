@@ -7,9 +7,11 @@ from typing import Union
 
 import sympy as sp
 
-__all__ = ["gpld", "make_entire", "gplde", "gcdexs", "bezouts"]
-
+from utils import get_leading_term_matrix
 from .genpoly import GenPoly
+from .utils import get_matrix_terms
+
+__all__ = ["gpld", "make_entire", "gplde", "gcdexs", "bezouts"]
 
 
 def gcdexs(
@@ -502,6 +504,22 @@ def get_column_reduction_transform(mat, col, p_gen, gp_gen, gp_expr):
 
 
 def reduce_matrix_shifts(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
+    # make sure the matrix is in the required form
+    # 1: highest derivatives on teh main diagonal
+    cffs, degs = get_leading_term_matrix(mat, p_gen)
+    for j in range(degs.shape[1]):
+        if degs[j, j] != max(degs[:, j]):
+            raise ValueError(
+                f"Given matrix does not have highest degrees w.r.t {p_gen} on the main diagonal."
+            )
+    # 2: tallest predictions on the main diagonal
+    (l_cffs, l_degs), (t_cffs, t_degs) = get_matrix_terms(mat, gp_gen, mode="both")
+    for j in range(degs.shape[1]):
+        if degs[j, j] != max(degs[:, j]):
+            raise ValueError(
+                f"Given matrix does not have highest degrees w.r.t {p_gen} on the main diagonal."
+            )
+
     bmat = copy(mat)
     l_mat = sp.Matrix.eye(mat.shape[0])
     for i in range(2, mat.shape[0]):

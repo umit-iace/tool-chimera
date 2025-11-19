@@ -1,4 +1,7 @@
-# coding: utf-8
+"""
+Utility functions
+"""
+
 import numpy as np
 import sympy as sp
 from sympy import PolynomialError
@@ -72,16 +75,18 @@ def show_mat_coeffs(mat: sp.Matrix, gen: sp.Symbol):
 
 
 def get_leading_term_matrix(mat, sym, subs=None):
+    return get_matrix_terms(mat, sym, subs, mode="leading")
+
+
+def get_matrix_terms(mat, sym, subs: dict = None, mode: str = None):
     if subs is not None:
         mat = mat.subs(subs).expand()
-
     degs = sp.MutableDenseMatrix.zeros(*mat.shape)
     coeffs = sp.MutableDenseMatrix.zeros(*mat.shape)
     for idx, e in mat.iter_items():
-        c, d = get_leading_term(e, sym)
+        c, d = get_term(e, sym, mode)
         degs[idx] = d
         coeffs[idx] = c
-
     return degs, coeffs
 
 
@@ -91,12 +96,12 @@ def get_leading_column_degrees(
     """
     Extract the highest degrees of each column
     """
-    degs, coeffs = get_leading_term_matrix(mat, sym, subs)
+    degs, coeffs = get_matrix_terms(mat, sym, subs, "leading")
     col_degs = [max(degs[:, c]) for c in range(mat.shape[1])]
     return col_degs
 
 
-def get_leading_term(e: sp.Expr, sym: sp.Symbol) -> tuple[sp.Expr, sp.Expr]:
+def get_term(e: sp.Expr, sym: sp.Symbol, mode: str = None) -> tuple[sp.Expr, sp.Expr]:
     """
     Extract the leading coefficient of some expression
 
@@ -108,26 +113,44 @@ def get_leading_term(e: sp.Expr, sym: sp.Symbol) -> tuple[sp.Expr, sp.Expr]:
     Args:
         e (sp.Expr): Expression to parse
         sym (sp.Symbol): Generator whose leading term is sought
+        mode (str): Decides which terms to return:
+            - "leading": Return leading term (highest degree), default
+            - "trailing": Return trailing term (lowest degree)
+            - "both": Return leading and trailing terms
     """
     try:
         # maybe it is a polynomial expression?
         p = sp.Poly(e, sym)
-        d = p.degree()
-        c = p.LC()
+        ld = p.degree()
+        lc = p.LC()
+        td = sp.Poly(p.EM(), sym).degree()
+        tc = p.TC()
     except PolynomialError:
         try:
             # maybe it is a rational expression?
             _np, _dp = [sp.Poly(expr, sym) for expr in e.as_numer_denom()]
-            d = _np.degree() - _dp.degree()
-            c = _np.LC() / _dp.LC()
+            ld = _np.degree() - _dp.degree()
+            lc = _np.LC() / _dp.LC()
+            td = sp.Poly(_np.EM(), sym).degree() - sp.Poly(_dp.EM, sym).degree()
+            tc = _np.EC() / _dp.EC()
         except PolynomialError:
             try:
                 p = GenPoly(expr=e, gen=sym)
-                d = p.degmax()
-                c = p.LC()
+                ld = p.degmax()
+                lc = p.LC()
+                td = p.degmin()
+                tc = p.TC()
             except ValueError:
                 print(f"Given Expression:\n{e}\n is of unsupported structure in {sym} ")
-    return c, d
+
+    if mode == "leading":
+        return lc, ld
+    elif mode == "trailing":
+        return lc, ld
+    elif mode == "both":
+        return (lc, ld), (tc, td)
+    else:
+        raise ValueError(f"Unknown operation mode '{mode}'")
 
 
 def get_lccm(mat: sp.Matrix, sym: sp.Symbol, subs: dict = None) -> sp.Matrix:
@@ -143,7 +166,7 @@ def get_lccm(mat: sp.Matrix, sym: sp.Symbol, subs: dict = None) -> sp.Matrix:
         The Leading column coefficient matrix.
 
     """
-    degs, coeffs = get_leading_term_matrix(mat, sym, subs)
+    degs, coeffs = get_matrix_terms(mat, sym, subs, "leading")
     col_degs = [max(degs[:, c]) for c in range(mat.shape[1])]
 
     r = sp.Matrix.zeros(*mat.shape)
@@ -167,7 +190,7 @@ def get_lctm(mat: sp.Matrix, sym: sp.Symbol, subs: dict = None) -> sp.Matrix:
         The Leading column term matrix.
 
     """
-    degs, coeffs = get_leading_term_matrix(mat, sym, subs)
+    degs, coeffs = get_matrix_terms(mat, sym, subs, "leading")
     col_degs = [max(degs[:, c]) for c in range(mat.shape[1])]
 
     r = sp.Matrix.zeros(*mat.shape)
