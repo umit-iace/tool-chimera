@@ -432,14 +432,19 @@ def make_entire(
             "The expression to substitute for the GenPoly generator must"
             "contain the free variable of the rational coefficients."
         )
-    entire_expr = sp.Add(*[num / lc * gen_expr**exp for num, exp in zip(nums, exps)])
+    # entire_expr = sp.Add(*[num / lc * gen_expr**exp for num, exp in zip(nums, exps)])
+    entire_dict = {exp: num / lc for num, exp in zip(nums, exps)}
+    entire_gpoly = GenPoly.from_dict(entire_dict, gen_expr)
     for r, m in rts.items():
-        wes = entire_expr.subs(rat_sym, r)
-        entire_expr = (entire_expr - wes) / (rat_sym - r) ** m
+        # wes = entire_expr.subs(rat_sym, r)
+        # entire_expr = (entire_expr - wes) / (rat_sym - r) ** m
+        expr_at_r = entire_gpoly.as_expr().replace(rat_sym, r)
+        entire_expr = (entire_gpoly - expr_at_r) / (rat_sym - r) ** m
 
     # re-Subs the generator expression
-    w = sp.Wild("w", exclude=[rat_sym])
-    r = entire_expr.replace(gen_expr**w, gp_gen**w)
+    # w = sp.Wild("w", exclude=[rat_sym])
+    # r = entire_expr.replace(gen_expr**w, expr.gen**w)
+    r = GenPoly(entire_expr.as_dict(), expr.gen)
 
     return r
 
@@ -475,7 +480,7 @@ def gplde(
     q, r = gpld(x, y, verbose)
     if q == 0:
         return q, r
-    qe = make_entire(q, c_gen, gp_gen, gen_expr)
+    qe = make_entire(q, c_gen, gen_expr)
     re = x - qe * y
     return qe, re
 

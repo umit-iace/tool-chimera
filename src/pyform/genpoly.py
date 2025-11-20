@@ -16,39 +16,56 @@ class GenPoly(sp.Basic):
     is_commutative = True
     is_GenPoly = True
 
-    def __new__(cls, rep, gen):
+    def __new__(cls, rep, *gens):
         """Create a new generalized polynomial instance out of something useful."""
         if isinstance(rep, dict):
-            return cls.from_dict(rep, gen)
+            return cls.from_dict(rep, *gens)
+        elif isinstance(rep, list):
+            return cls.from_list(rep, *gens)
         else:
             rep = sp.sympify(rep, evaluate=type(rep) is not str)  # type: ignore
             if isinstance(rep, GenPoly):
-                return cls.from_gpoly(rep, gen)
+                return cls.from_gpoly(rep, *gens)
             else:
-                return cls.from_expr(rep, gen)
+                return cls.from_expr(rep, *gens)
 
     @classmethod
-    def from_expr(cls, expr: sp.Expr, gen: sp.Symbol):
-        return cls.from_dict(cls.dict_from_expr(expr, gen), gen)
+    def from_gpoly(cls, expr, *gens: sp.Symbol):
+        return cls.from_dict(expr.as_dict(), *gens)
 
     @classmethod
-    def from_dict(cls, exp_coeff_map: dict, gen: sp.Symbol):
-        obj = sp.Basic.__new__(cls, exp_coeff_map, gen)
+    def from_expr(cls, expr: sp.Expr, *gens: sp.Symbol):
+        return cls.from_dict(cls.dict_from_expr(expr, *gens), *gens)
+
+    @classmethod
+    def from_list(cls, exp_coeff_list: list[tuple], *gens: sp.Symbol):
+        return cls.from_dict({k: v for k, v in exp_coeff_list}, *gens)
+
+    @classmethod
+    def from_dict(cls, exp_coeff_map: dict, *gens: sp.Symbol):
+        return cls.new(exp_coeff_map, *gens)
+
+    @classmethod
+    def new(cls, rep, *gens):
+        obj = sp.Basic.__new__(cls, rep, gens)
+        obj.rep = rep
+        obj.gens = gens
         return obj
-
-    # def __abs__(f):
-    #     return f.abs()
 
     def __neg__(f):
         return f.neg()
 
     def __add__(f, g):
+        if f.gen not in g.as_expr().free_symbols:
+            return f.add_ground(g)
         return f.add(g)
 
     def __radd__(f, g):
-        return g.add(f)
+        return f.add(g)
 
     def __sub__(f, g):
+        if f.gen not in g.as_expr().free_symbols:
+            return f.sub_ground(g)
         return f.sub(g)
 
     def __rsub__(f, g):
@@ -58,7 +75,19 @@ class GenPoly(sp.Basic):
         return f.mul(g)
 
     def __rmul__(f, g):
-        return g.mul(f)
+        return f.mul(g)
+
+    def __truediv__(f, g):
+        if not isinstance(g, GenPoly):
+            if f.gen not in g.as_expr().free_symbols:
+                return f.div_ground(g)
+        return f.as_expr() / g.as_expr()
+
+    def __rtruediv__(f, g):
+        if not isinstance(f, GenPoly):
+            if g.gen not in f.as_expr().free_symbols:
+                return f.div_ground(g)
+        return g.as_expr() / f.as_expr()
 
     def __str__(self):
         return str(f"Signomial in {self.gen} with exponents {self.exponents()})")
@@ -67,6 +96,14 @@ class GenPoly(sp.Basic):
         return str(
             f"Signomial with generator {self.gen} and exponent-coefficient map {self.args[0]}"
         )
+
+    def add_ground(f, g):
+        rd = {}
+        for exp, cff in f.as_dict().items():
+            rc = (cff + g).simplify()
+            if rc != 0:
+                rd[exp] = rc
+        return GenPoly.from_dict(rd, f.gen)
 
     def add(f, g):
         g = sp.sympify(g)
@@ -77,7 +114,7 @@ class GenPoly(sp.Basic):
         fd = f.as_dict()
         gd = g.as_dict()
         for exp, cff in fd.items():
-            rc = cff + gd.pop(exp, 0)
+            rc = (cff + gd.pop(exp, 0)).simplify()
             if rc != 0:
                 rd[exp] = rc
         rd.update(gd)
@@ -92,6 +129,23 @@ class GenPoly(sp.Basic):
         if not isinstance(g, GenPoly):
             g = GenPoly(g, f.gen)
         return f.add(g.neg())
+
+    def sub_ground(f, g):
+        return f.add_ground(-g)
+
+    def mul_ground(f, g):
+        g = sp.sympify(g)
+        if not isinstance(g, GenPoly):
+            g = GenPoly(g, f.gen)
+        if g.exponents():
+            return f.mul(g)
+
+        g = g.as_expr()
+        rd = {}
+        for exp, cff in f.as_dict().items():
+            rd[exp] = cff * g
+
+        return GenPoly.from_dict(rd, f.gen)
 
     def mul(f, g):
         g = sp.sympify(g)
@@ -109,8 +163,15 @@ class GenPoly(sp.Basic):
                     r_dict[rd] = rc
         return GenPoly.from_dict(r_dict, f.gen)
 
+    def div_ground(f, g):
+        g = sp.sympify(g)
+        rd = {}
+        for exp, cff in f.as_dict().items():
+            rd[exp] = cff / g
+        return GenPoly.from_dict(rd, f.gen)
+
     def as_dict(self) -> dict:
-        return self.args[0]
+        return self.rep
 
     def as_numers_denom(self):
         """
@@ -122,24 +183,36 @@ class GenPoly(sp.Basic):
         return numers, denom
 
     @staticmethod
-    def dict_to_expr(s_dict: dict, gen: sp.Symbol) -> sp.Expr:
+    def dict_to_expr(exp_coeff_map: dict, gen: sp.Symbol) -> sp.Expr:
         """
-        Helper function to build an expr from an s_dict
+        Helper function to build an expr from a dict
         """
         expr = 0
-        for k, v in s_dict.items():
+        for k, v in exp_coeff_map.items():
+            expr += v * gen**k
+        return expr
+
+    @staticmethod
+    def list_to_expr(exp_coeff_pairs: list, gen: sp.Symbol) -> sp.Expr:
+        """
+        Helper function to build an expr from a list
+        """
+        expr = 0
+        for k, v in exp_coeff_pairs:
             expr += v * gen**k
         return expr
 
     @staticmethod
     def dict_from_expr(
-        expr: sp.Expr, gen: Union[sp.Symbol, sp.Expr]
+        expr: sp.Expr, *gens: Union[sp.Symbol, sp.Expr]
     ) -> dict[sp.Expr : sp.Expr]:
         """
         Variant of polyutils '_parallel_dict_from_expr_if_gens' that will
         work with rational powers of generators in an expression and thus
         create powers and coefficients of a signomial.
         """
+        assert len(gens) == 1
+        gen = gens[0]
         if expr.is_Poly:
             if expr.gen == gen:
                 return expr.as_dict()
@@ -194,11 +267,11 @@ class GenPoly(sp.Basic):
         return {e: r for e, c in sig.items() if (r := c.simplify()) != 0}
 
     def as_expr(self) -> sp.Expr:
-        return self.dict_to_expr(self.args[0], self.args[1])
+        return self.dict_to_expr(self.rep, self.gen)
 
     @property
     def gen(self) -> sp.Symbol:
-        return self.args[1]
+        return self.gens[0]
 
     def degree(self, s_dict: dict = None) -> sp.Expr:
         return self.degmax(s_dict) - self.degmin(s_dict)
@@ -239,17 +312,17 @@ class GenPoly(sp.Basic):
 
     def LC(self, s_dict: dict = None) -> sp.Expr:
         """Return the Leading coefficient"""
-        return self.args[0][self.degmax(s_dict)]
+        return self.rep[self.degmax(s_dict)]
 
     def TC(self, s_dict: dict = None) -> sp.Expr:
         """Return the Trailing coefficient"""
-        return self.args[0][self.degmin(s_dict)]
+        return self.rep[self.degmin(s_dict)]
 
     def exponents(self) -> list[sp.Expr]:
-        return list(self.args[0].keys())
+        return [k for k in self.rep.keys()]
 
     def coefficients(self) -> list[sp.Expr]:
-        return list(self.args[0].values())
+        return [v for v in self.rep.values()]
 
     def get_coeff_denom_lcm(self) -> sp.Expr:
         """
