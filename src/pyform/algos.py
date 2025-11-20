@@ -361,7 +361,8 @@ def gpld(
     y_dmin = y.degmin()
 
     q = GenPoly(0, x.gen)
-    r = copy(x)
+    r = copy(x)  # TODO fix copy call on GenPoly
+    r = x
     while True:
         r_dmax = r.degmax()
         r_dmin = r.degmin()
