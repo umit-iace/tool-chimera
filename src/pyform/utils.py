@@ -38,7 +38,7 @@ def get_coeffs(expr: sp.Expr, gen: sp.Symbol) -> dict:
     Helper function to return the coefficients of different powers
     of *gen* in *expr*.
     """
-    s = GenPoly(expr=expr, gen=gen)
+    s = GenPoly(expr, gen=gen)
     c = s.as_dict()
     return c
 
@@ -75,19 +75,29 @@ def show_mat_coeffs(mat: sp.Matrix, gen: sp.Symbol):
 
 
 def get_leading_term_matrix(mat, sym, subs=None):
-    return get_matrix_terms(mat, sym, subs, mode="leading")
+    (lc, ld), _ = get_matrix_terms(mat, sym, subs)
+    return lc, ld
 
 
-def get_matrix_terms(mat, sym, subs: dict = None, mode: str = None):
+def get_trailing_term_matrix(mat, sym, subs=None):
+    _, (tc, td) = get_matrix_terms(mat, sym, subs)
+    return tc, td
+
+
+def get_matrix_terms(mat, sym, subs: dict = None):
     if subs is not None:
         mat = mat.subs(subs).expand()
-    degs = sp.MutableDenseMatrix.zeros(*mat.shape)
-    coeffs = sp.MutableDenseMatrix.zeros(*mat.shape)
+    l_degs = sp.MutableDenseMatrix.zeros(*mat.shape)
+    l_cffs = sp.MutableDenseMatrix.zeros(*mat.shape)
+    t_degs = sp.MutableDenseMatrix.zeros(*mat.shape)
+    t_cffs = sp.MutableDenseMatrix.zeros(*mat.shape)
     for idx, e in mat.iter_items():
-        c, d = get_term(e, sym, mode)
-        degs[idx] = d
-        coeffs[idx] = c
-    return degs, coeffs
+        (lc, ld), (tc, td) = get_term(e, sym, mode="both")
+        l_cffs[idx] = lc
+        l_degs[idx] = ld
+        t_cffs[idx] = tc
+        t_degs[idx] = td
+    return (l_cffs, l_degs), (t_cffs, t_degs)
 
 
 def get_leading_column_degrees(
@@ -96,7 +106,7 @@ def get_leading_column_degrees(
     """
     Extract the highest degrees of each column
     """
-    degs, coeffs = get_matrix_terms(mat, sym, subs, "leading")
+    (coeffs, degs), _ = get_matrix_terms(mat, sym, subs)
     col_degs = [max(degs[:, c]) for c in range(mat.shape[1])]
     return col_degs
 
@@ -117,40 +127,63 @@ def get_term(e: sp.Expr, sym: sp.Symbol, mode: str = None) -> tuple[sp.Expr, sp.
             - "leading": Return leading term (highest degree), default
             - "trailing": Return trailing term (lowest degree)
             - "both": Return leading and trailing terms
-    """
-    try:
-        # maybe it is a polynomial expression?
-        p = sp.Poly(e, sym)
-        ld = p.degree()
-        lc = p.LC()
-        td = sp.Poly(p.EM(), sym).degree()
-        tc = p.TC()
-    except PolynomialError:
-        try:
-            # maybe it is a rational expression?
-            _np, _dp = [sp.Poly(expr, sym) for expr in e.as_numer_denom()]
-            ld = _np.degree() - _dp.degree()
-            lc = _np.LC() / _dp.LC()
-            td = sp.Poly(_np.EM(), sym).degree() - sp.Poly(_dp.EM, sym).degree()
-            tc = _np.EC() / _dp.EC()
-        except PolynomialError:
-            try:
-                p = GenPoly(expr=e, gen=sym)
-                ld = p.degmax()
-                lc = p.LC()
-                td = p.degmin()
-                tc = p.TC()
-            except ValueError:
-                print(f"Given Expression:\n{e}\n is of unsupported structure in {sym} ")
 
-    if mode == "leading":
-        return lc, ld
-    elif mode == "trailing":
-        return lc, ld
-    elif mode == "both":
+    Returns:
+        Tuple of coefficient and exponent for the selected mode.
+    """
+
+    def _handle_gpoly(_gp: GenPoly):
+        lc = _gp.LC()
+        ld = _gp.degmax()
+        tc = _gp.TC()
+        td = _gp.degmin()
         return (lc, ld), (tc, td)
-    else:
-        raise ValueError(f"Unknown operation mode '{mode}'")
+
+    def _handle_poly(_p: sp.Poly):
+        lc = _p.LC()
+        ld = _p.degree()
+        tc = _p.TC()
+        td = sp.Poly(_p.EM(), _p.gens).degree()
+        return (lc, ld), (tc, td)
+
+    def _handle_rational(_np, _dp):
+        lc = _np.LC() / _dp.LC()
+        ld = _np.degree() - _dp.degree()
+        tc = _np.EC() / _dp.EC()
+        td = sp.Poly(_np.EM(), _np.gens).degree() - sp.Poly(_dp.EM(), _dp.gens).degree()
+        return (lc, ld), (tc, td)
+
+    # most special case first
+    if isinstance(e, GenPoly):
+        if e.gen == sym:
+            return _handle_gpoly(e)
+        else:
+            # generators don't match, treat as expression
+            e = e.as_expr()
+
+    # maybe it is a polynomial expression?
+    if e.is_Poly:
+        if e.gen == sym:
+            return _handle_poly(e)
+        else:
+            # generators don't match, treat as expression
+            e = e.as_expr()
+    if e.is_polynomial(sym):
+        p = sp.Poly(e, sym)
+        return _handle_poly(p)
+
+    # maybe it is a rational expression?
+    num, den = e.as_numer_denom()
+    if num.is_polynomial(sym) and den.is_polynomial(sym):
+        np, dp = [sp.Poly(expr, sym) for expr in (num, den)]
+        return _handle_rational(np, dp)
+
+    # last resort, try to parse as generalized polynomial
+    try:
+        p = GenPoly(e, gen=sym)
+        return _handle_gpoly(p)
+    except ValueError:
+        print(f"Given Expression:\n{e}\n is of unsupported structure in {sym} ")
 
 
 def get_lccm(mat: sp.Matrix, sym: sp.Symbol, subs: dict = None) -> sp.Matrix:
@@ -166,7 +199,7 @@ def get_lccm(mat: sp.Matrix, sym: sp.Symbol, subs: dict = None) -> sp.Matrix:
         The Leading column coefficient matrix.
 
     """
-    degs, coeffs = get_matrix_terms(mat, sym, subs, "leading")
+    (coeffs, degs), _ = get_matrix_terms(mat, sym, subs)
     col_degs = [max(degs[:, c]) for c in range(mat.shape[1])]
 
     r = sp.Matrix.zeros(*mat.shape)
@@ -190,7 +223,7 @@ def get_lctm(mat: sp.Matrix, sym: sp.Symbol, subs: dict = None) -> sp.Matrix:
         The Leading column term matrix.
 
     """
-    degs, coeffs = get_matrix_terms(mat, sym, subs, "leading")
+    (coeffs, degs), _ = get_matrix_terms(mat, sym, subs, "leading")
     col_degs = [max(degs[:, c]) for c in range(mat.shape[1])]
 
     r = sp.Matrix.zeros(*mat.shape)

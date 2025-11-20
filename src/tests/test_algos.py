@@ -2,7 +2,13 @@ import sympy as sp
 
 from pyform import GenPoly
 from pyform.algos import reduce_matrix_shifts, gpld, make_entire, gplde
-from pyform.utils import get_leading_column_degrees, check_singularities
+from pyform.utils import (
+    get_leading_column_degrees,
+    check_singularities,
+    is_col_reduced,
+    check_derivative_condition,
+    check_prediction_condition,
+)
 
 # generators
 sigma = sp.Symbol("sigma", positive=True)
@@ -86,9 +92,9 @@ def test_gplde():
 
 
 def test_reduce_matrix_shifts():
-    a = 5 * s**3 + 2 * s**2 + 1 * s + 7
-    b = 1 * s**2 - 10 * s - 5
-    c = 3 * s - 1
+    a = sp.Poly(5 * s**3 + 2 * s**2 + 1 * s + 7, s)
+    b = sp.Poly(1 * s**2 - 10 * s - 5, s)
+    c = sp.Poly(3 * s - 1, s)
     d_mat = sp.Matrix(
         [
             [a, b, c],
@@ -96,6 +102,7 @@ def test_reduce_matrix_shifts():
             [b, c, a],
         ]
     )
+    assert is_col_reduced(d_mat, s)
     tau_m = [sp.sqrt(2), sp.sqrt(5), sp.sqrt(7)]
     pred_mat = sp.Matrix.diag([sigma**tau for tau in tau_m])
     tau_p = [0, -sp.sqrt(3), -sp.sqrt(9)]
@@ -107,9 +114,19 @@ def test_reduce_matrix_shifts():
     sp.pprint(mr)
     sp.pprint(l)
 
+    # check trafo
+    err = l @ m - mr
+    err.simplify()
+    assert err == sp.Matrix.zeros(*m.shape)
+
+    # check result properties
+    # 1) all elements should have same degrees in each column
     cd = get_leading_column_degrees(mr, sigma)
     for i in range(len(tau_m)):
         assert cd[i] == tau_m[i]
+    # 2) leading coefficient matrices wrt s and sigma must commute and have full rank
+    assert check_derivative_condition(mr, s)
+    assert check_prediction_condition(mr, sigma)
 
 
 # def test_gcdexs():

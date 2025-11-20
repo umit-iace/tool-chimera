@@ -2,49 +2,124 @@ from typing import Union
 
 import sympy as sp
 from sympy.core.exprtools import decompose_power_rat
+from sympy.utilities.iterables import iterable
 
 
 __all__ = ["GenPoly"]
 
 
-class GenPoly:
+class GenPoly(sp.Basic):
     """
     Class to handle signomials, which are polynomials but with rational exponents
     """
 
-    def __init__(self, expr: sp.Expr, gen: sp.Symbol, exp_coeff_map: dict = None):
-        self._gen = gen
-        if expr is not None:
-            self._sig = self.dict_from_expr(expr, gen)
+    is_commutative = True
+    is_GenPoly = True
+
+    def __new__(cls, rep, gen):
+        """Create a new generalized polynomial instance out of something useful."""
+        if isinstance(rep, dict):
+            return cls.from_dict(rep, gen)
         else:
-            if exp_coeff_map is not None:
-                self._sig = exp_coeff_map
+            rep = sp.sympify(rep, evaluate=type(rep) is not str)  # type: ignore
+            if isinstance(rep, GenPoly):
+                return cls.from_gpoly(rep, gen)
             else:
-                raise ValueError("Either expr or map has to be provided")
+                return cls.from_expr(rep, gen)
+
+    @classmethod
+    def from_expr(cls, expr: sp.Expr, gen: sp.Symbol):
+        return cls.from_dict(cls.dict_from_expr(expr, gen), gen)
+
+    @classmethod
+    def from_dict(cls, exp_coeff_map: dict, gen: sp.Symbol):
+        obj = sp.Basic.__new__(cls, exp_coeff_map, gen)
+        return obj
+
+    # def __abs__(f):
+    #     return f.abs()
+
+    def __neg__(f):
+        return f.neg()
+
+    def __add__(f, g):
+        return f.add(g)
+
+    def __radd__(f, g):
+        return g.add(f)
+
+    def __sub__(f, g):
+        return f.sub(g)
+
+    def __rsub__(f, g):
+        return g.sub(f)
+
+    def __mul__(f, g):
+        return f.mul(g)
+
+    def __rmul__(f, g):
+        return g.mul(f)
 
     def __str__(self):
-        return str(f"Signomial in {self._gen} with exponents {self.exponents()})")
+        return str(f"Signomial in {self.gen} with exponents {self.exponents()})")
 
     def __repr__(self):
         return str(
-            f"Signomial with generator {self._gen} and exponent-coeffieicent map {self._sig}"
+            f"Signomial with generator {self.gen} and exponent-coefficient map {self.args[0]}"
         )
 
+    def add(f, g):
+        g = sp.sympify(g)
+        if not isinstance(g, GenPoly):
+            g = GenPoly(g, f.gen)
+
+        rd = {}
+        fd = f.as_dict()
+        gd = g.as_dict()
+        for exp, cff in fd.items():
+            rc = cff + gd.pop(exp, 0)
+            if rc != 0:
+                rd[exp] = rc
+        rd.update(gd)
+        return GenPoly.from_dict(rd, f.gen)
+
+    def neg(f):
+        rd = {exp: -cff for exp, cff in f.as_dict().items()}
+        return GenPoly.from_dict(rd, f.gen)
+
+    def sub(f, g):
+        g = sp.sympify(g)
+        if not isinstance(g, GenPoly):
+            g = GenPoly(g, f.gen)
+        return f.add(g.neg())
+
+    def mul(f, g):
+        g = sp.sympify(g)
+        if not isinstance(g, GenPoly):
+            g = GenPoly(g, f.gen)
+
+        r_dict = {}
+        for fd, fc in f.as_dict().items():
+            for gd, gc in g.as_dict().items():
+                rd = (fd + gd).simplify()
+                rc = fc * gc
+                if rd in r_dict:
+                    r_dict[rd] += rc
+                else:
+                    r_dict[rd] = rc
+        return GenPoly.from_dict(r_dict, f.gen)
+
     def as_dict(self) -> dict:
-        return self._sig
+        return self.args[0]
 
     def as_numers_denom(self):
         """
-        Return coeffiecent numerators as well as their common denominator
+        Return coefficient numerators as well as their common denominator
         """
         dens = [c.as_numer_denom()[1] for c in self.coefficients()]
         denom = sp.lcm(dens)
         numers = [(c * denom).simplify() for c in self.coefficients()]
         return numers, denom
-
-    @classmethod
-    def from_dict(cls, sd: dict, gen: sp.Symbol):
-        return cls(None, exp_coeff_map=sd, gen=gen)
 
     @staticmethod
     def dict_to_expr(s_dict: dict, gen: sp.Symbol) -> sp.Expr:
@@ -65,7 +140,13 @@ class GenPoly:
         work with rational powers of generators in an expression and thus
         create powers and coefficients of a signomial.
         """
-        expr = sp.sympify(expr)
+        if expr.is_Poly:
+            if expr.gen == gen:
+                return expr.as_dict()
+            else:
+                expr = expr.as_expr()
+        else:
+            expr = sp.sympify(expr)
         w = sp.Wild("w")
         if not isinstance(gen, sp.Symbol):
             # fix issues with compound generators
@@ -77,7 +158,7 @@ class GenPoly:
                 print("Warning compound generators may cause problems")
 
         sig = {}
-        expr = expr.expand()
+        expr = expr.expand(power_exp=False)
         for term in sp.Add.make_args(expr):
             coeff = []
             exp = []
@@ -106,23 +187,18 @@ class GenPoly:
             e = sp.Add(*exp)
             c = sp.Mul(*coeff)
             if e in sig:
-                # sig[exp] = (sig[exp] + c).simplify()
                 sig[e] += c
             else:
                 sig[e] = c
 
         return {e: r for e, c in sig.items() if (r := c.simplify()) != 0}
 
-    @classmethod
-    def from_expr(cls, expr, gen):
-        return cls(expr=expr, gen=gen)
-
-    def to_expr(self) -> sp.Expr:
-        return self.dict_to_expr(self._sig, self._gen)
+    def as_expr(self) -> sp.Expr:
+        return self.dict_to_expr(self.args[0], self.args[1])
 
     @property
     def gen(self) -> sp.Symbol:
-        return self._gen
+        return self.args[1]
 
     def degree(self, s_dict: dict = None) -> sp.Expr:
         return self.degmax(s_dict) - self.degmin(s_dict)
@@ -163,17 +239,17 @@ class GenPoly:
 
     def LC(self, s_dict: dict = None) -> sp.Expr:
         """Return the Leading coefficient"""
-        return self._sig[self.degmax(s_dict)]
+        return self.args[0][self.degmax(s_dict)]
 
     def TC(self, s_dict: dict = None) -> sp.Expr:
         """Return the Trailing coefficient"""
-        return self._sig[self.degmin(s_dict)]
+        return self.args[0][self.degmin(s_dict)]
 
     def exponents(self) -> list[sp.Expr]:
-        return list(self._sig.keys())
+        return list(self.args[0].keys())
 
     def coefficients(self) -> list[sp.Expr]:
-        return list(self._sig.values())
+        return list(self.args[0].values())
 
     def get_coeff_denom_lcm(self) -> sp.Expr:
         """

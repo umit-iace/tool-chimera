@@ -7,9 +7,8 @@ from typing import Union
 
 import sympy as sp
 
-from utils import get_leading_term_matrix
 from .genpoly import GenPoly
-from .utils import get_matrix_terms
+from .utils import get_matrix_terms, get_leading_term_matrix
 
 __all__ = ["gpld", "make_entire", "gplde", "gcdexs", "bezouts"]
 
@@ -31,7 +30,7 @@ def gcdexs(
     idx = 1
     while idx < max_iterations + 1:
         q, r = gplde(h[idx - 1], h[idx], gp_gen)
-        q = q.to_expr()
+        q = q.as_expr()
 
         if r == 0:
             # this is really unlikely to happen, since exponents must be commensurable for that
@@ -333,11 +332,10 @@ def hermite_form(mat: sp.Matrix, p_gen: sp.Symbol, s_gen: sp.Symbol):
 
 
 def gpld(
-    x: Union[sp.Expr, GenPoly],
-    y: Union[sp.Expr, GenPoly],
-    gen: Union[sp.Symbol, sp.Expr],
+    x: Union[GenPoly],
+    y: Union[GenPoly],
     verbose: bool = False,
-) -> tuple[sp.Expr, sp.Expr]:
+) -> tuple[GenPoly, GenPoly]:
     """
     Perform generalized polynomial long division
 
@@ -349,31 +347,22 @@ def gpld(
         support division.
 
     Args:
-        x (sp.Expr): Expression to be divided
-        y (sp.Expr): Expression to divide by
-        gen (sp.Symbol,sp.Expr): Generator of the generalized polynomials
+        x (GenPoly): Expression to be divided
+        y (GenPoly): Expression to divide by
         verbose (bool): If True, be verbose about what steps are taken
 
     Returns:
-        Tuple (q,r) of generalised quotient polynomial and remainder.
+        Tuple (q,r) of generalized quotient polynomial and remainder.
     """
+    assert x.gen == y.gen
     assert y != 0
-    if not isinstance(y, GenPoly):
-        y = GenPoly(y, gen)
-    else:
-        if isinstance(x, GenPoly):
-            assert x.gen == y.gen
-            r = x.to_expr()
-        else:
-            r = copy(x)
 
     y_dmax = y.degmax()
     y_dmin = y.degmin()
 
-    q = sp.sympify(0)
+    q = GenPoly(0, x.gen)
     r = copy(x)
     while True:
-        r = GenPoly(r.simplify(), y.gen)
         r_dmax = r.degmax()
         r_dmin = r.degmin()
 
@@ -394,23 +383,23 @@ def gpld(
 
         if not degmax_correct:
             # reduce predictions
-            q_k = r.LC() / y.LC() * y.gen ** (r_dmax - y_dmax)
+            q_kd = {(r_dmax - y_dmax): r.LC() / y.LC()}
         elif not degmin_correct:
             # reduce delays
-            q_k = r.TC() / y.TC() * y.gen ** (r_dmin - y_dmin)
+            q_kd = {(r_dmin - y_dmin): r.TC() / y.TC()}
         else:
             break
+        q_k = GenPoly.from_dict(q_kd, y.gen)
 
-        r = r.to_expr() - q_k * y.to_expr()
+        r = r - q_k * y
         q += q_k
 
-    return q.simplify(), r.to_expr()
+    return q, r
 
 
 def make_entire(
-    expr: sp.Expr,
+    expr: GenPoly,
     rat_sym: sp.Symbol,
-    gp_gen: Union[sp.Symbol, sp.Expr],
     gen_expr: sp.Expr,
 ):
     """
@@ -421,20 +410,16 @@ def make_entire(
     Laplace transform of a shift operator with compact support.
 
     Args:
-        expr (sp.Expr): Expression to work on
+        expr (GenPoly): Expression to work on
         rat_sym (sp.Symbol): Free variable of the rational coefficients
-        gp_gen (sp.Symbol): Generator of the generalized polynomial
         gen_expr (sp.Expr): Expression in sym, that will be substituted for *gp_gen*
 
     Returns:
         sp.Expr: The resulting expression without singularities (entire function in rat_sym)
     """
     # extract the common denominator
-    if not expr.has(gp_gen):
-        raise ValueError("Given expression does not contain any shifts")
-    e_sig = GenPoly(expr, gp_gen)
-    exps = e_sig.exponents()
-    nums, den = e_sig.as_numers_denom()
+    exps = expr.exponents()
+    nums, den = expr.as_numers_denom()
 
     # factorize the denominator, extract leading coefficient
     p_den = sp.Poly(den, rat_sym)
@@ -460,13 +445,13 @@ def make_entire(
 
 
 def gplde(
-    x: Union[sp.Expr, GenPoly],
-    y: Union[sp.Expr, GenPoly],
+    x: Union[GenPoly],
+    y: Union[GenPoly],
     c_gen: sp.Symbol,
     gp_gen: sp.Symbol,
     gen_expr: sp.Expr,
     verbose: bool = False,
-) -> tuple[sp.Expr, sp.Expr]:
+) -> tuple[GenPoly, GenPoly]:
     """
     Perform  modified generalized polynomial long division
 
@@ -477,8 +462,8 @@ def gplde(
         Care is taken, such that the resulting q and r remain whole functions
 
     Args:
-        x (sp.Expr): Expression to be divided
-        y (sp.Expr): Expression to divide by
+        x (GenPoly): Expression to be divided
+        y (GenPoly): Expression to divide by
         gp_gen (sp.Symbol): Generator of the generalized polynomials
         c_gen (sp.Symbol): Generator of the coefficient polynomials
         gen_expr (sp.Expr): Expression in sym, that will be substituted for *gp_gen*
@@ -487,7 +472,7 @@ def gplde(
     Returns:
         Tuple (q,r) of generalized quotient polynomial and remainder.
     """
-    q, r = gpld(x, y, gp_gen, verbose)
+    q, r = gpld(x, y, verbose)
     if q == 0:
         return q, r
     qe = make_entire(q, c_gen, gp_gen, gen_expr)
@@ -504,28 +489,42 @@ def get_column_reduction_transform(mat, col, p_gen, gp_gen, gp_expr):
 
 
 def reduce_matrix_shifts(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
-    # make sure the matrix is in the required form
-    # 1: highest derivatives on teh main diagonal
+    gp_mat = mat.applyfunc(lambda x: GenPoly(x, gp_gen))
+    check_canonical_form(gp_mat, p_gen, gp_gen)
+
+    l_mat = sp.Matrix.eye(mat.shape[0])
+    for i in range(2, mat.shape[0]):
+        for j in range(1, mat.shape[0] - 1):
+            lc = get_column_reduction_transform(gp_mat, j, p_gen, gp_gen, sp.exp(p_gen))
+            gp_mat = lc @ gp_mat
+            l_mat = lc @ l_mat
+
+    return gp_mat, l_mat
+
+
+def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
+    """
+    Check if a matrix m is in canonical form, thus if the highest derivative degrees
+    occur in the main diagonal elements and that the predictions and overall shifts interval
+    diameters are increasing from top to bottom in each column.
+    """
+    # 1: highest derivatives on the main diagonal
     cffs, degs = get_leading_term_matrix(mat, p_gen)
     for j in range(degs.shape[1]):
         if degs[j, j] != max(degs[:, j]):
             raise ValueError(
-                f"Given matrix does not have highest degrees w.r.t {p_gen} on the main diagonal."
+                f"Given matrix does not have highest degrees w.r.t {p_gen} on the main diagonal "
+                f"in column {j}."
             )
-    # 2: tallest predictions on the main diagonal
-    (l_cffs, l_degs), (t_cffs, t_degs) = get_matrix_terms(mat, gp_gen, mode="both")
+    # 2: highest predictions and shift degrees increasing
+    (l_cffs, l_degs), (t_cffs, t_degs) = get_matrix_terms(mat, gp_gen)
+    c_degs = l_degs - t_degs
     for j in range(degs.shape[1]):
-        if degs[j, j] != max(degs[:, j]):
+        if l_degs[j, j] != min(l_degs[j:, j]):
             raise ValueError(
-                f"Given matrix does not have highest degrees w.r.t {p_gen} on the main diagonal."
+                f"Given matrix does not exhibit increasing predictions in column {j}."
             )
-
-    bmat = copy(mat)
-    l_mat = sp.Matrix.eye(mat.shape[0])
-    for i in range(2, mat.shape[0]):
-        for j in range(1, mat.shape[0] - 1):
-            lc = get_column_reduction_transform(bmat, j, p_gen, gp_gen, sp.exp(p_gen))
-            bmat = lc @ bmat
-            l_mat = lc @ l_mat
-
-    return bmat, l_mat
+        if c_degs[j, j] != min(c_degs[j:, j]):
+            raise ValueError(
+                f"Given matrix does not exhibit increasing shift intervals in column {j}."
+            )

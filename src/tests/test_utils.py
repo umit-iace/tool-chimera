@@ -24,7 +24,7 @@ def test_get_coeff():
     sigma = sp.symbols("sigma", positive=True)
 
     sig_dict = {a: 4 * s + 2, b: 3 * s, -2 * a: 5 * s**2, b + b: 3 * s}
-    f = GenPoly.from_dict(sig_dict, sigma).to_expr()
+    f = GenPoly.from_dict(sig_dict, sigma).as_expr()
     c = get_coeffs(f, sigma)
     assert sig_dict == c
 
@@ -79,7 +79,7 @@ def test_get_coeff():
         )
     )
     cffs = get_coeffs(f, sigma)
-    assert [*cffs.keys()] == [2 * tau_b, 4 * tau_b, tau_a + 3 * tau_b]
+    assert set(cffs.keys()) == set([2 * tau_b, 4 * tau_b, tau_a + 3 * tau_b])
 
     f = 1 / (2 * c2 * c3 * sigma - 2 * c2 * sigma)
     cffs = get_coeffs(f, sigma)
@@ -103,8 +103,11 @@ def test_get_leading_terms():
     sigma = sp.symbols("sigma", positive=True)
 
     m = sp.Matrix([[2 * s**3 + 2 * s + 5, s**2], [1 / (2 - 2 * s), (s - 2) / (s + 2)]])
-    ans = sp.Matrix([[2, 1], [-sp.Rational(1, 2), 1]])
-    assert get_leading_term_matrix(m, s)[1] == ans
+    c_ans = sp.Matrix([[2, 1], [-sp.Rational(1, 2), 1]])
+    d_ans = sp.Matrix([[3, 2], [-1, 0]])
+    c, d = get_leading_term_matrix(m, s)
+    assert c == c_ans
+    assert d == d_ans
 
     m = sp.Matrix(
         [
@@ -116,7 +119,7 @@ def test_get_leading_terms():
         ]
     )
     ans = sp.Matrix([[2, 1], [-sp.Rational(1, 2), 1]])
-    assert get_leading_term_matrix(m, sigma)[1] == ans
+    assert get_leading_term_matrix(m, sigma)[0] == ans
 
 
 def test_conditions():
@@ -171,7 +174,7 @@ def test_column_reduced_form():
     assert is_col_reduced(m_cr, s)
 
 
-@pytest.skip
+@pytest.mark.skip("Takes too long")
 def test_generate_transform():
     # tests
     Arnf = np.array(
