@@ -1,3 +1,5 @@
+from itertools import chain
+
 import sympy as sp
 
 from pyform import GenPoly
@@ -92,9 +94,9 @@ def test_gplde():
 
 
 def test_reduce_matrix_shifts():
-    a = sp.Poly(5 * s**3 + 2 * s**2 + 1 * s + 7, s)
-    b = sp.Poly(1 * s**2 - 10 * s - 5, s)
-    c = sp.Poly(3 * s - 1, s)
+    a = 4 * s**3 + 2 * s**2 + 1 * s + 7
+    b = 1 * s**2 - 10 * s - 5
+    c = 3 * s - 1
     d_mat = sp.Matrix(
         [
             [a, b, c],
@@ -104,17 +106,27 @@ def test_reduce_matrix_shifts():
     )
     assert is_col_reduced(d_mat, s)
     tau_m = [sp.sqrt(2), sp.sqrt(5), sp.sqrt(7)]
-    pred_mat = sp.Matrix.diag([sigma**tau for tau in tau_m])
     tau_p = [0, -sp.sqrt(3), -sp.sqrt(9)]
+
+    pred_mat = sp.Matrix.diag([sigma**tau for tau in tau_m])
     delay_mat = sp.Matrix.diag([sigma**tau for tau in tau_p])
     m = pred_mat @ d_mat + delay_mat @ d_mat
 
+    # gens = list(
+    #     chain(*[[sigma**tau, 1 / sigma**tau] for tau in tau_m + tau_p if tau != 0])
+    # )
+    # gens.append(s)
+    # mp = m.applyfunc(lambda x: sp.Poly(x, gens))
+
+    print()
     sp.pprint(m, wrap_line=False)
-    mr, l = reduce_matrix_shifts(m, s, sigma)
-    sp.pprint(mr)
-    sp.pprint(l)
+    mrg, lg = reduce_matrix_shifts(m, s, sigma)
+    # sp.pprint(mrg, wrap_line=False)
+    # sp.pprint(lg, wrap_line=False)
 
     # check trafo
+    l = lg.applyfunc(lambda x: x.as_expr())
+    mr = mrg.applyfunc(lambda x: x.as_expr())
     err = l @ m - mr
     err.simplify()
     assert err == sp.Matrix.zeros(*m.shape)

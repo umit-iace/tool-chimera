@@ -67,6 +67,9 @@ def test_dict_from_expr():
 
 
 def test_add():
+    f = GenPoly(0, sigma)
+    assert f + 1 == 1
+
     for c in [case_1, case_2, case_3, case_4]:
         f, g = c()
         fg = GenPoly(f, sigma)

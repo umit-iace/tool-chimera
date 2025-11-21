@@ -1,6 +1,8 @@
 from typing import Union
+from functools import reduce
 
 import sympy as sp
+from sympy.core.numbers import S
 from sympy.core.exprtools import decompose_power_rat
 from sympy.utilities.iterables import iterable
 
@@ -18,16 +20,19 @@ class GenPoly(sp.Basic):
 
     def __new__(cls, rep, *gens):
         """Create a new generalized polynomial instance out of something useful."""
+        if isinstance(rep, GenPoly):
+            return cls.from_dict(rep.as_dict(), *gens)
         if isinstance(rep, dict):
             return cls.from_dict(rep, *gens)
         elif isinstance(rep, list):
             return cls.from_list(rep, *gens)
+        elif isinstance(rep, sp.Add) and all(
+            isinstance(arg, GenPoly) for arg in rep.args
+        ):
+            return reduce(lambda f, g: f.add(g), rep.args)
         else:
             rep = sp.sympify(rep, evaluate=type(rep) is not str)  # type: ignore
-            if isinstance(rep, GenPoly):
-                return cls.from_gpoly(rep, *gens)
-            else:
-                return cls.from_expr(rep, *gens)
+            return cls.from_expr(rep, *gens)
 
     @classmethod
     def from_gpoly(cls, expr, *gens: sp.Symbol):
@@ -43,33 +48,42 @@ class GenPoly(sp.Basic):
 
     @classmethod
     def from_dict(cls, exp_coeff_map: dict, *gens: sp.Symbol):
+        if not exp_coeff_map:
+            return sp.sympify(0)
         return cls.new(exp_coeff_map, *gens)
 
     @classmethod
     def new(cls, rep, *gens):
-        obj = sp.Basic.__new__(cls, rep, gens)
+        obj = sp.Basic.__new__(cls)
         obj.rep = rep
         obj.gens = gens
         return obj
+
+    @property
+    def expr(self):
+        return self.as_expr()
+
+    @property
+    def args(self):
+        return (self.expr,) + self.gens
+
+    def _hashable_content(self):
+        return tuple(self.rep.items()) + self.gens
 
     def __neg__(f):
         return f.neg()
 
     def __add__(f, g):
-        if f.gen not in g.as_expr().free_symbols:
-            return f.add_ground(g)
         return f.add(g)
 
     def __radd__(f, g):
         return f.add(g)
 
     def __sub__(f, g):
-        if f.gen not in g.as_expr().free_symbols:
-            return f.sub_ground(g)
         return f.sub(g)
 
     def __rsub__(f, g):
-        return g.sub(f)
+        return f.neg().add(g)
 
     def __mul__(f, g):
         return f.mul(g)
@@ -90,31 +104,32 @@ class GenPoly(sp.Basic):
         return g.as_expr() / f.as_expr()
 
     def __str__(self):
-        return str(f"Signomial in {self.gen} with exponents {self.exponents()})")
+        return str(f"GenPoly({self.exponents()}, {self.gen})")
 
     def __repr__(self):
-        return str(
-            f"Signomial with generator {self.gen} and exponent-coefficient map {self.args[0]}"
-        )
+        return str(f"GenPoly({self.rep}, {self.gens})")
 
     def add_ground(f, g):
         rd = {}
         for exp, cff in f.as_dict().items():
-            rc = (cff + g).simplify()
+            rc = cff + g
             if rc != 0:
                 rd[exp] = rc
-        return GenPoly.from_dict(rd, f.gen)
+        return GenPoly.from_dict(rd, *f.gens)
 
     def add(f, g):
         g = sp.sympify(g)
         if not isinstance(g, GenPoly):
-            g = GenPoly(g, f.gen)
+            if f.gen not in g.as_expr().free_symbols:
+                return f.add_ground(g)
+            else:
+                g = GenPoly(g, *f.gens)
 
         rd = {}
         fd = f.as_dict()
         gd = g.as_dict()
         for exp, cff in fd.items():
-            rc = (cff + gd.pop(exp, 0)).simplify()
+            rc = cff + gd.pop(exp, 0)
             if rc != 0:
                 rd[exp] = rc
         rd.update(gd)
@@ -125,13 +140,10 @@ class GenPoly(sp.Basic):
         return GenPoly.from_dict(rd, f.gen)
 
     def sub(f, g):
-        g = sp.sympify(g)
-        if not isinstance(g, GenPoly):
-            g = GenPoly(g, f.gen)
-        return f.add(g.neg())
+        return f.add(-g)
 
-    def sub_ground(f, g):
-        return f.add_ground(-g)
+    # def sub_ground(f, g):
+    #     return f.add_ground(-g)
 
     def mul_ground(f, g):
         g = sp.sympify(g)
@@ -149,6 +161,8 @@ class GenPoly(sp.Basic):
 
     def mul(f, g):
         g = sp.sympify(g)
+        if g == S.Zero:
+            return S.Zero
         if not isinstance(g, GenPoly):
             g = GenPoly(g, f.gen)
 
@@ -235,7 +249,8 @@ class GenPoly(sp.Basic):
         for term in sp.Add.make_args(expr):
             coeff = []
             exp = []
-            term = term.simplify().expand(power_exp=False).collect(gen**w).collect(gen)
+            # term = term.simplify().expand(power_exp=False).collect(gen**w).collect(gen)
+            term = term.expand(power_exp=False).collect(gen**w).collect(gen)
             for factor in sp.Mul.make_args(term):
                 factor = factor.collect(gen**w).collect(gen)
                 if not factor.has_free(gen):
