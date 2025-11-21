@@ -354,6 +354,8 @@ def gpld(
     Returns:
         Tuple (q,r) of generalized quotient polynomial and remainder.
     """
+    if not isinstance(x, GenPoly) or not isinstance(y, GenPoly):
+        raise ValueError("Only arguments of type GenPoly supported")
     assert x.gen == y.gen
     assert y != 0
 
@@ -400,7 +402,7 @@ def gpld(
 def make_entire(
     expr: GenPoly,
     rat_sym: sp.Symbol,
-    gen_expr: sp.Expr,
+    gen_expr: sp.Expr = None,
 ):
     """
     Convert a generalized polynomial in *sig_gen* with rational coefficients
@@ -417,9 +419,11 @@ def make_entire(
     Returns:
         sp.Expr: The resulting expression without singularities (entire function in rat_sym)
     """
+    if gen_expr is None:
+        gen_expr = sp.exp(rat_sym)
+
     # extract the common denominator
-    exps = expr.exponents()
-    nums, den = expr.as_numers_denom()
+    num, den = expr.as_numer_denom()
 
     # factorize the denominator, extract leading coefficient
     p_den = sp.Poly(den, rat_sym)
@@ -429,12 +433,11 @@ def make_entire(
     # start without denominator and iteratively add zeroes
     if rat_sym not in gen_expr.free_symbols:
         raise ValueError(
-            "The expression to substitute for the GenPoly generator must"
+            "The expression to substitute for the GenPoly generator must "
             "contain the free variable of the rational coefficients."
         )
     # entire_expr = sp.Add(*[num / lc * gen_expr**exp for num, exp in zip(nums, exps)])
-    entire_dict = {exp: num / lc for num, exp in zip(nums, exps)}
-    entire_gpoly = GenPoly.from_dict(entire_dict, gen_expr)
+    entire_gpoly = GenPoly(num / lc, gen_expr)
     for r, m in rts.items():
         # wes = entire_expr.subs(rat_sym, r)
         # entire_expr = (entire_expr - wes) / (rat_sym - r) ** m
@@ -453,8 +456,6 @@ def gplde(
     x: Union[GenPoly],
     y: Union[GenPoly],
     c_gen: sp.Symbol,
-    gp_gen: sp.Symbol,
-    gen_expr: sp.Expr,
     verbose: bool = False,
 ) -> tuple[GenPoly, GenPoly]:
     """
@@ -469,9 +470,7 @@ def gplde(
     Args:
         x (GenPoly): Expression to be divided
         y (GenPoly): Expression to divide by
-        gp_gen (sp.Symbol): Generator of the generalized polynomials
         c_gen (sp.Symbol): Generator of the coefficient polynomials
-        gen_expr (sp.Expr): Expression in sym, that will be substituted for *gp_gen*
         verbose (bool): If True, be verbose about what steps are taken
 
     Returns:
@@ -480,15 +479,17 @@ def gplde(
     q, r = gpld(x, y, verbose)
     if q == 0:
         return q, r
-    qe = make_entire(q, c_gen, gen_expr)
+    qe = make_entire(q, c_gen)
+    p = qe.as_dict()[0]
+    # re = r - p * y
     re = x - qe * y
     return qe, re
 
 
-def get_column_reduction_transform(mat, col, p_gen, gp_gen, gp_expr):
+def get_column_reduction_transform(mat, col, p_gen):
     l_mat = sp.Matrix.eye(mat.shape[0])
     for i in range(col + 1, mat.shape[0]):
-        qe, re = gplde(mat[i, col], mat[col, col], p_gen, gp_gen, gp_expr)
+        qe, re = gplde(mat[i, col], mat[col, col], p_gen)
         l_mat[i, col] = -qe
     return l_mat
 
@@ -500,9 +501,9 @@ def reduce_matrix_shifts(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
     l_mat = sp.Matrix.eye(mat.shape[0])
     for i in range(2, mat.shape[0]):
         for j in range(1, mat.shape[0] - 1):
-            lc = get_column_reduction_transform(gp_mat, j, p_gen, gp_gen, sp.exp(p_gen))
-            gp_mat = lc @ gp_mat
-            l_mat = lc @ l_mat
+            lc = get_column_reduction_transform(gp_mat, j, p_gen)
+            gp_mat = (lc @ gp_mat).applyfunc(lambda x: GenPoly(x, gp_gen))
+            l_mat = (lc @ l_mat).applyfunc(lambda x: GenPoly(x, gp_gen))
 
     return gp_mat, l_mat
 

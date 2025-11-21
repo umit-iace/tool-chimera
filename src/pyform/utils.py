@@ -180,7 +180,7 @@ def get_term(e: sp.Expr, sym: sp.Symbol, mode: str = None) -> tuple[sp.Expr, sp.
 
     # last resort, try to parse as generalized polynomial
     try:
-        p = GenPoly(e, gen=sym)
+        p = GenPoly(e, sym)
         return _handle_gpoly(p)
     except ValueError:
         print(f"Given Expression:\n{e}\n is of unsupported structure in {sym} ")
@@ -414,13 +414,15 @@ def check_singularities(
     Returns:
         False if expr contains singularities, True otherwise.
     """
+    if not isinstance(expr, GenPoly):
+        expr = GenPoly(expr, gp_sym)
     num, den = expr.as_numer_denom()
     poles = sp.roots(den, rat_sym)
     for p, m in poles.items():
         print(f"Testing pole at s={p}:")
         for expr in num, den:
-            res = expr.subs(gp_sym, gp_expr).evalf(subs={rat_sym: p})
-            if not np.isclose(res, 0):
+            res = expr.as_expr().subs(gp_sym, gp_expr).evalf(subs={rat_sym: p})
+            if not np.isclose(complex(res), 0):
                 return False
     else:
         return True

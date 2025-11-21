@@ -54,18 +54,20 @@ class GenPoly(sp.Basic):
 
     @classmethod
     def new(cls, rep, *gens):
-        obj = sp.Basic.__new__(cls)
+        assert isinstance(rep, dict)
+        assert isinstance(gens[0], (sp.Symbol, sp.Expr))
+        obj = sp.Basic.__new__(cls, rep, *gens)
         obj.rep = rep
         obj.gens = gens
         return obj
 
-    @property
-    def expr(self):
-        return self.as_expr()
+    # @property
+    # def expr(self):
+    #     return self.as_expr()
 
     @property
     def args(self):
-        return (self.expr,) + self.gens
+        return (self.rep,) + self.gens
 
     def _hashable_content(self):
         return tuple(self.rep.items()) + self.gens
@@ -107,14 +109,14 @@ class GenPoly(sp.Basic):
         return str(f"GenPoly({self.exponents()}, {self.gen})")
 
     def __repr__(self):
-        return str(f"GenPoly({self.rep}, {self.gens})")
+        return str(f"GenPoly({self.exponents()}, {self.gen})")
 
     def add_ground(f, g):
-        rd = {}
-        for exp, cff in f.as_dict().items():
-            rc = cff + g
-            if rc != 0:
-                rd[exp] = rc
+        if g == S.Zero:
+            return GenPoly(f, *f.gens)
+        rd = f.as_dict()
+        c0 = rd.get(0, S.Zero) + g
+        rd[0] = c0
         return GenPoly.from_dict(rd, *f.gens)
 
     def add(f, g):
@@ -125,14 +127,20 @@ class GenPoly(sp.Basic):
             else:
                 g = GenPoly(g, *f.gens)
 
-        rd = {}
+        # extract exponents
+        fe = set(f.exponents())
+        ge = set(g.exponents())
+        common_exps = fe.intersection(ge)
+        f_only_exps = fe.difference(common_exps)
+        g_only_exps = ge.difference(common_exps)
+
+        # join coefficients
         fd = f.as_dict()
         gd = g.as_dict()
-        for exp, cff in fd.items():
-            rc = cff + gd.pop(exp, 0)
-            if rc != 0:
-                rd[exp] = rc
-        rd.update(gd)
+        rd = {exp: fd[exp] + gd[exp] for exp in common_exps}
+        rd.update({exp: fd[exp] for exp in f_only_exps})
+        rd.update({exp: gd[exp] for exp in g_only_exps})
+
         return GenPoly.from_dict(rd, f.gen)
 
     def neg(f):
@@ -142,17 +150,8 @@ class GenPoly(sp.Basic):
     def sub(f, g):
         return f.add(-g)
 
-    # def sub_ground(f, g):
-    #     return f.add_ground(-g)
-
     def mul_ground(f, g):
         g = sp.sympify(g)
-        if not isinstance(g, GenPoly):
-            g = GenPoly(g, f.gen)
-        if g.exponents():
-            return f.mul(g)
-
-        g = g.as_expr()
         rd = {}
         for exp, cff in f.as_dict().items():
             rd[exp] = cff * g
@@ -164,6 +163,8 @@ class GenPoly(sp.Basic):
         if g == S.Zero:
             return S.Zero
         if not isinstance(g, GenPoly):
+            if f.gen not in g.as_expr().free_symbols:
+                return f.mul_ground(g)
             g = GenPoly(g, f.gen)
 
         r_dict = {}
@@ -187,14 +188,25 @@ class GenPoly(sp.Basic):
     def as_dict(self) -> dict:
         return self.rep
 
-    def as_numers_denom(self):
+    def _eval_is_polynomial(self, gens):
+        return False
+
+    def as_coeff_Mul(self, *deps, **kwargs):
+        return self.as_expr().as_coeff_Mul(*deps, **kwargs)
+
+    def as_numer_denom(self):
         """
-        Return coefficient numerators as well as their common denominator
+        Return GenPoly with coefficient numerators as well as their common denominator
         """
-        dens = [c.as_numer_denom()[1] for c in self.coefficients()]
-        denom = sp.lcm(dens)
-        numers = [(c * denom).simplify() for c in self.coefficients()]
-        return numers, denom
+        c_denoms = [c.as_numer_denom()[1] for c in self.coefficients()]
+        denom = sp.lcm(c_denoms)
+
+        nd = {exp: sp.cancel(cff * denom) for exp, cff in self.as_dict().items()}
+        numer = GenPoly.from_dict(nd, self.gen)
+        return numer, denom
+
+    def as_base_exp(self):
+        return self.as_expr().as_base_exp()
 
     @staticmethod
     def dict_to_expr(exp_coeff_map: dict, gen: sp.Symbol) -> sp.Expr:
