@@ -91,7 +91,7 @@ def get_matrix_terms(mat, sym, subs: dict = None):
     t_degs = sp.MutableDenseMatrix.zeros(*mat.shape)
     t_cffs = sp.MutableDenseMatrix.zeros(*mat.shape)
     for idx, e in mat.iter_items():
-        (lc, ld), (tc, td) = get_term(e, sym, mode="both")
+        (lc, ld), (tc, td) = get_term(e, sym)
         l_cffs[idx] = lc
         l_degs[idx] = ld
         t_cffs[idx] = tc
@@ -110,7 +110,30 @@ def get_leading_column_degrees(
     return col_degs
 
 
-def get_term(e: sp.Expr, sym: sp.Symbol, mode: str = None) -> tuple[sp.Expr, sp.Expr]:
+def get_trailing_column_degrees(
+    mat: sp.Matrix, sym: sp.Symbol, subs: dict = None
+) -> list:
+    """
+    Extract the smallest degrees of each column
+    """
+    _, (coeffs, degs) = get_matrix_terms(mat, sym, subs)
+    col_degs = [min(degs[:, c]) for c in range(mat.shape[1])]
+    return col_degs
+
+
+def get_column_degrees(mat: sp.Matrix, sym: sp.Symbol, subs: dict = None) -> list:
+    """
+    Extract the highest and smallest degrees of each column
+    """
+    (l_coeffs, l_degs), (t_coeffs, t_degs) = get_matrix_terms(mat, sym, subs)
+    min_degs = [min(t_degs[:, c]) for c in range(mat.shape[1])]
+    max_degs = [max(l_degs[:, c]) for c in range(mat.shape[1])]
+    return max_degs, min_degs
+
+
+def get_term(
+    e: sp.Expr, sym: sp.Symbol
+) -> tuple[tuple[sp.Expr, sp.Expr], tuple[sp.Expr, sp.Expr]]:
     """
     Extract the leading coefficient of some expression
 
@@ -122,10 +145,6 @@ def get_term(e: sp.Expr, sym: sp.Symbol, mode: str = None) -> tuple[sp.Expr, sp.
     Args:
         e (sp.Expr): Expression to parse
         sym (sp.Symbol): Generator whose leading term is sought
-        mode (str): Decides which terms to return:
-            - "leading": Return leading term (highest degree), default
-            - "trailing": Return trailing term (lowest degree)
-            - "both": Return leading and trailing terms
 
     Returns:
         Tuple of coefficient and exponent for the selected mode.
@@ -149,24 +168,37 @@ def get_term(e: sp.Expr, sym: sp.Symbol, mode: str = None) -> tuple[sp.Expr, sp.
         lc = _np.LC() / _dp.LC()
         ld = _np.degree() - _dp.degree()
         tc = _np.EC() / _dp.EC()
-        td = sp.Poly(_np.EM(), _np.gens).degree() - sp.Poly(_dp.EM(), _dp.gens).degree()
+        tdn = sp.Poly(_np.EM(), _np.gens).degree()
+        tdd = sp.Poly(_dp.EM(), _dp.gens).degree()
+        if tdn == tdd == sp.S.NegativeInfinity:
+            td = 0
         return (lc, ld), (tc, td)
 
-    # most special case first
+    def _handle_coefficients(_p, sym):
+        ld = td = 0
+        for c in _p.coefficients():
+            (_lc, _ld), (_tc, _td) = get_term(c, sym)
+            if _ld >= ld:
+                ld = _ld
+                lc = _lc
+            if _td <= td:
+                td = _td
+                tc = _tc
+        return (lc, ld), (tc, td)
+
+    # maybe it is a generalized polynomial?
     if isinstance(e, GenPoly):
         if e.gen == sym:
             return _handle_gpoly(e)
         else:
-            # generators don't match, treat as expression
-            e = e.as_expr()
+            return _handle_coefficients(e, sym)
 
     # maybe it is a polynomial expression?
     if e.is_Poly:
         if e.gen == sym:
             return _handle_poly(e)
         else:
-            # generators don't match, treat as expression
-            e = e.as_expr()
+            return _handle_coefficients(e, sym)
     if e.is_polynomial(sym):
         p = sp.Poly(e, sym)
         return _handle_poly(p)
@@ -178,11 +210,8 @@ def get_term(e: sp.Expr, sym: sp.Symbol, mode: str = None) -> tuple[sp.Expr, sp.
         return _handle_rational(np, dp)
 
     # last resort, try to parse as generalized polynomial
-    try:
-        p = GenPoly(e, sym)
-        return _handle_gpoly(p)
-    except ValueError:
-        print(f"Given Expression:\n{e}\n is of unsupported structure in {sym} ")
+    p = GenPoly(e, sym)
+    return _handle_gpoly(p)
 
 
 def get_lccm(mat: sp.Matrix, sym: sp.Symbol, subs: dict = None) -> sp.Matrix:

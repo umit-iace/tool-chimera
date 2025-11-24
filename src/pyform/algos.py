@@ -402,7 +402,7 @@ def make_entire(
     expr: GenPoly,
     rat_sym: sp.Symbol,
     gen_expr: sp.Expr = None,
-):
+) -> GenPoly:
     """
     Convert a generalized polynomial in *sig_gen* with rational coefficients
     in *sym* into a version without singularities
@@ -416,7 +416,7 @@ def make_entire(
         gen_expr (sp.Expr): Expression in sym, that will be substituted for *gp_gen*
 
     Returns:
-        sp.Expr: The resulting expression without singularities (entire function in rat_sym)
+        GenPoly: The resulting expression without singularities (entire function in rat_sym)
     """
     if gen_expr is None:
         gen_expr = sp.exp(rat_sym)
@@ -470,12 +470,11 @@ def gplde(
         Tuple (q,r) of generalized quotient polynomial and remainder.
     """
     q, r = gpld(x, y, verbose)
-    if q == 0:
+    if q.is_zero:
         return q, r
     qe = make_entire(q, c_gen)
-    # p = qe.as_dict()[0]
-    # re = r - p * y
-    re = x - qe * y
+    p = qe.as_dict()[0]
+    re = r - p * y
     return qe, re
 
 
@@ -492,8 +491,10 @@ def reduce_matrix_shifts(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
     check_canonical_form(gp_mat, p_gen, gp_gen)
 
     l_mat = sp.Matrix.eye(mat.shape[0])
-    for i in range(2, mat.shape[0]):
-        for j in range(1, mat.shape[0] - 1):
+    for i in range(1, mat.shape[0]):
+        print(f"Reducing row {i}")
+        for j in range(mat.shape[0] - 1):
+            print(f"Reducing col {j}")
             lc = get_column_reduction_transform(gp_mat, j, p_gen)
             gp_mat = (lc @ gp_mat).applyfunc(lambda x: GenPoly(x, gp_gen))
             l_mat = (lc @ l_mat).applyfunc(lambda x: GenPoly(x, gp_gen))

@@ -24,13 +24,15 @@ class GenPoly(sp.Basic):
             return cls.from_dict(rep, *gens)
         elif isinstance(rep, list):
             return cls.from_list(rep, *gens)
-        elif isinstance(rep, sp.Add) and all(
-            isinstance(arg, GenPoly) for arg in rep.args
-        ):
-            return reduce(lambda f, g: f.add(g), rep.args)
-        else:
-            rep = sp.sympify(rep, evaluate=type(rep) is not str)  # type: ignore
-            return cls.from_expr(rep, *gens)
+        elif isinstance(rep, sp.Add):
+            # gp = next((o for o in rep.args if isinstance(rep, GenPoly)), None)
+            # if gp is not None:
+            if any(isinstance(arg, GenPoly) for arg in rep.args):
+                return cls(reduce(lambda f, g: f + g, rep.args), *gens)
+
+        # last resort
+        rep = sp.sympify(rep, evaluate=type(rep) is not str)
+        return cls.from_expr(rep, *gens)
 
     @classmethod
     def from_gpoly(cls, expr, *gens: sp.Symbol):
@@ -114,6 +116,8 @@ class GenPoly(sp.Basic):
 
     def add(f, g):
         g = sp.sympify(g)
+        if not f.rep:
+            return g
         if not isinstance(g, GenPoly):
             if f.gen not in g.as_expr().free_symbols:
                 return f.add_ground(g)
@@ -233,11 +237,11 @@ class GenPoly(sp.Basic):
     @staticmethod
     def dict_from_expr(
         expr: sp.Expr, *gens: Union[sp.Symbol, sp.Expr]
-    ) -> dict[sp.Expr : sp.Expr]:
+    ) -> dict[sp.Expr, sp.Expr]:
         """
         Variant of polyutils '_parallel_dict_from_expr_if_gens' that will
         work with rational powers of generators in an expression and thus
-        create powers and coefficients of a signomial.
+        create powers and coefficients of a generalized polynomial.
         """
         assert len(gens) == 1
         gen = gens[0]
@@ -258,12 +262,11 @@ class GenPoly(sp.Basic):
             else:
                 print("Warning compound generators may cause problems")
 
-        sig = {}
+        e_c_map = {}
         expr = expr.expand(power_exp=False)
         for term in sp.Add.make_args(expr):
             coeff = []
             exp = []
-            # term = term.simplify().expand(power_exp=False).collect(gen**w).collect(gen)
             term = term.expand(power_exp=False).collect(gen**w).collect(gen)
             for factor in sp.Mul.make_args(term):
                 factor = factor.collect(gen**w).collect(gen)
@@ -288,12 +291,11 @@ class GenPoly(sp.Basic):
                         exp.append(p_exp)
             e = sp.Add(*exp)
             c = sp.Mul(*coeff)
-            if e in sig:
-                sig[e] += c
+            if e in e_c_map:
+                e_c_map[e] += c
             else:
-                sig[e] = c
-
-        return {e: r for e, c in sig.items() if (r := c.simplify()) != 0}
+                e_c_map[e] = c
+        return e_c_map
 
     def as_expr(self) -> sp.Expr:
         return self.dict_to_expr(self.rep, self.gen)
@@ -301,6 +303,10 @@ class GenPoly(sp.Basic):
     @property
     def gen(self) -> sp.Symbol:
         return self.gens[0]
+
+    @property
+    def is_zero(self) -> bool:
+        return not bool(self.rep)
 
     def degree(self, s_dict: dict = None) -> sp.Expr:
         return self.degmax(s_dict) - self.degmin(s_dict)
