@@ -1,11 +1,9 @@
-from typing import Union
 from functools import reduce
+from typing import Union
 
 import sympy as sp
-from sympy.core.numbers import S
 from sympy.core.exprtools import decompose_power_rat
-from sympy.utilities.iterables import iterable
-
+from sympy.core.numbers import S
 
 __all__ = ["GenPoly"]
 
@@ -49,8 +47,9 @@ class GenPoly(sp.Basic):
     @classmethod
     def from_dict(cls, exp_coeff_map: dict, *gens: sp.Symbol):
         if not exp_coeff_map:
-            return sp.sympify(0)
-        return cls.new(exp_coeff_map, *gens)
+            return S.Zero
+        red_map = {deg: cff for deg, cff in exp_coeff_map.items() if cff != 0}
+        return cls.new(red_map, *gens)
 
     @classmethod
     def new(cls, rep, *gens):
@@ -65,9 +64,9 @@ class GenPoly(sp.Basic):
     # def expr(self):
     #     return self.as_expr()
 
-    @property
-    def args(self):
-        return (self.rep,) + self.gens
+    # @property
+    # def args(self):
+    #     return (self.rep,) + self.gens
 
     def _hashable_content(self):
         return tuple(self.rep.items()) + self.gens
@@ -161,7 +160,7 @@ class GenPoly(sp.Basic):
     def mul(f, g):
         g = sp.sympify(g)
         if g == S.Zero:
-            return S.Zero
+            return GenPoly(0, *f.gens)
         if not isinstance(g, GenPoly):
             if f.gen not in g.as_expr().free_symbols:
                 return f.mul_ground(g)
@@ -170,7 +169,7 @@ class GenPoly(sp.Basic):
         r_dict = {}
         for fd, fc in f.as_dict().items():
             for gd, gc in g.as_dict().items():
-                rd = (fd + gd).simplify()
+                rd = fd + gd
                 rc = fc * gc
                 if rd in r_dict:
                     r_dict[rd] += rc
