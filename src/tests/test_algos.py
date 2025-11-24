@@ -1,5 +1,3 @@
-from itertools import chain
-
 import sympy as sp
 
 from pyform import GenPoly
@@ -55,9 +53,14 @@ def test_make_entire():
         + (s**4 + 1) / s**2 * (s**2 - 2) * sigma,
     ]
     for expr in exprs:
+        print(f"Testing {expr}:")
         ep = GenPoly(expr, sigma)
         e_epxr = make_entire(ep, s)
         check_singularities(e_epxr, s, sigma, sp.exp(s))
+
+        # all coefficients should stay the same, except for the constant part
+        err = expr - e_epxr
+        assert err.exponents() == [0]
 
 
 def test_gplde():
@@ -88,7 +91,7 @@ def test_gplde():
         print(f"Dividing {x} by {y}:")
         xp = GenPoly(x, sigma)
         yp = GenPoly(y, sigma)
-        qep, rep = gplde(xp, yp, s, sp.exp(s))
+        qep, rep = gplde(xp, yp, s)
         qe = qep.as_expr()
         re = rep.as_expr()
         print(f"q: {qe}")
@@ -99,15 +102,15 @@ def test_gplde():
         assert rep.degree() <= yp.degree()
 
         # check residual
-        res = x - qe * y
         err = x - qe * y - re
         err = err.simplify()
         print(f"error: {err}")
         assert err == 0
 
         print("Checking for singularities in quotient and remainder:")
-        for t in qe, re:
+        for t in qep, rep:
             check_singularities(t, s, sigma, sp.exp(s))
+            print("All good")
 
 
 def test_reduce_matrix_shifts():

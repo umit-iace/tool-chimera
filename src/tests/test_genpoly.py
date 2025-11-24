@@ -1,6 +1,6 @@
 import sympy as sp
 
-from pyform import GenPoly, gpld
+from pyform import GenPoly
 
 # generators
 sigma = sp.Symbol("sigma", positive=True)
@@ -32,7 +32,7 @@ def case_2():
 
 
 def case_3():
-    # negative non-integer exponents and other symbols like s
+    # negative non-integer exponents and polynomial coefficients
     f = sp.Poly(s**2 + s, s) / (2 * sigma) + sigma ** (-2)
     g = sp.Poly(s / 2, s)
     print("Case 3:")
@@ -42,7 +42,7 @@ def case_3():
 
 
 def case_4():
-    # compound exponent
+    # compound exponents
     f = (
         sp.Poly(s**2 + 2 * s + 1, s) * sigma ** (a + b) + sp.Poly(s**3, s) * sigma**-b
     ) * sigma**a
@@ -53,8 +53,33 @@ def case_4():
     return f, g
 
 
+def case_5():
+    # rational coefficients and real exponents
+    f = (
+        sp.Poly(s**2 + 2 * s + 1, s) / sp.Poly(s**3 - s, s) * sigma ** (a + b)
+        + sp.Poly(s**3, s) * sigma**-b
+    ) * sigma**a
+    g = (
+        sp.Poly(s**2 + 2 * s + 1, s) * sigma**-a
+        + sp.Poly(s**3 + 1 * s, s) / sp.Poly(s**2 + 2, s) * sigma**b
+    )
+    print("Case 5:")
+    print(f"f: {f}")
+    print(f"g: {g}")
+    return f, g
+
+
+def case_6():
+    f = (3 * s + 2 * s**2) * sigma ** sp.sqrt(5) + (s**2 + 2 * s) * sigma + 2 * s + 1
+    g = (3 * s**4 + 2 * s**2) * sigma ** sp.sqrt(2) + (s**2 + 2 * s) * sigma + 2 * s + 1
+    print("Case 6:")
+    print(f"f: {f}")
+    print(f"g: {g}")
+    return f, g
+
+
 def test_dict_from_expr():
-    for c in [case_1, case_2, case_3, case_4]:
+    for c in [case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
         for expr in f, g:
             s_dict = GenPoly.dict_from_expr(expr, sigma)
@@ -70,7 +95,7 @@ def test_add():
     f = GenPoly(0, sigma)
     assert f + 1 == 1
 
-    for c in [case_1, case_2, case_3, case_4]:
+    for c in [case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
         fg = GenPoly(f, sigma)
         gg = GenPoly(g, sigma)
@@ -80,7 +105,7 @@ def test_add():
 
 
 def test_sub():
-    for c in [case_1, case_2, case_3, case_4]:
+    for c in [case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
         fg = GenPoly(f, sigma)
         gg = GenPoly(g, sigma)
@@ -90,10 +115,30 @@ def test_sub():
 
 
 def test_mul():
-    for c in [case_1, case_2, case_3, case_4]:
+    for c in [case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
         fg = GenPoly(f, sigma)
         gg = GenPoly(g, sigma)
         rg = fg * gg
         err = f * g - rg.as_expr()
         assert err.simplify() == 0
+
+
+def test_div():
+    for c in [case_1, case_2, case_3, case_4, case_5, case_6]:
+        f, g = c()
+        fg = GenPoly(f, sigma)
+        gg = GenPoly(g, sigma)
+        rg = fg / gg.LM()
+        err = fg - gg.LM() * rg
+        assert err.as_expr().simplify() == 0
+
+
+def test_as_numer_denom():
+    for c in [case_1, case_2, case_3, case_4, case_5, case_6]:
+        for expr in c():
+            xp = GenPoly(expr, sigma)
+            num, den = xp.as_numer_denom()
+            print(f"Numerator: {num}, Denominator: {den}")
+            err = num.as_expr() / den - expr
+            assert err.simplify() == 0

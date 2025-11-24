@@ -4,7 +4,6 @@ Utility functions
 
 import numpy as np
 import sympy as sp
-from sympy import PolynomialError
 
 from .genpoly import GenPoly
 
@@ -69,7 +68,7 @@ def show_mat_coeffs(mat: sp.Matrix, gen: sp.Symbol):
     mc = get_matrix_coeffs(mat, gen)
     for i, row in enumerate(mc):
         for j, c in enumerate(row):
-            print(f"Element: {j,i}")
+            print(f"Element: {j, i}")
             for k, v in c.items():
                 print(k, v)
 
@@ -288,7 +287,7 @@ def column_reduced_form(
                 # print(f"Testing colums {k+1} to {q}")
 
                 # compute basis coefficients
-                cs = sp.symbols(f"c_{k+2}:{q-k+2}")
+                cs = sp.symbols(f"c_{k + 2}:{q - k + 2}")
                 # display(cs)
                 # pad them for the first k columns
                 csp = tuple(0 for n in range(k + 1)) + cs
@@ -400,7 +399,11 @@ def check_equal(expr1, expr2, n=10, positive=False, strictly_positive=False):
 
 
 def check_singularities(
-    expr: sp.Expr, rat_sym: sp.Symbol, gp_sym: sp.Symbol, gp_expr: sp.Expr
+    expr: sp.Expr,
+    rat_sym: sp.Symbol,
+    gp_sym: sp.Symbol,
+    gp_expr: sp.Expr,
+    verbose: bool = False,
 ):
     """
     Check if denominator zeroes are numerator zeroes as well
@@ -410,6 +413,7 @@ def check_singularities(
         rat_sym: Generator of rational expressions
         gp_sym: Generator of generalized polynomials
         gp_expr: Expression to use for *gp_sym*
+        verbose: Be verbose
 
     Returns:
         False if expr contains singularities, True otherwise.
@@ -419,7 +423,8 @@ def check_singularities(
     num, den = expr.as_numer_denom()
     poles = sp.roots(den, rat_sym)
     for p, m in poles.items():
-        print(f"Testing pole at s={p}:")
+        if verbose:
+            print(f"Testing pole at s={p}:")
         for expr in num, den:
             res = expr.as_expr().subs(gp_sym, gp_expr).evalf(subs={rat_sym: p})
             if not np.isclose(complex(res), 0):

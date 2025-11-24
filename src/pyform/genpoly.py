@@ -93,16 +93,10 @@ class GenPoly(sp.Basic):
         return f.mul(g)
 
     def __truediv__(f, g):
-        if not isinstance(g, GenPoly):
-            if f.gen not in g.as_expr().free_symbols:
-                return f.div_ground(g)
-        return f.as_expr() / g.as_expr()
+        return f.div(g)
 
     def __rtruediv__(f, g):
-        if not isinstance(f, GenPoly):
-            if g.gen not in f.as_expr().free_symbols:
-                return f.div_ground(g)
-        return g.as_expr() / f.as_expr()
+        return f.mul(g ** (-1))
 
     def __str__(self):
         return str(f"GenPoly({self.exponents()}, {self.gen})")
@@ -184,6 +178,15 @@ class GenPoly(sp.Basic):
             rd[exp] = cff / g
         return GenPoly.from_dict(rd, f.gen)
 
+    def div(f, g):
+        g = sp.sympify(g)
+        if not isinstance(g, GenPoly):
+            if f.gen not in g.as_expr().free_symbols:
+                return f.div_ground(g)
+
+        # fallback
+        return f.as_expr() / g.as_expr()
+
     def as_dict(self) -> dict:
         return self.rep
 
@@ -212,7 +215,7 @@ class GenPoly(sp.Basic):
         """
         Helper function to build an expr from a dict
         """
-        expr = 0
+        expr = S.Zero
         for k, v in exp_coeff_map.items():
             expr += v * gen**k
         return expr
@@ -335,6 +338,10 @@ class GenPoly(sp.Basic):
             return default
         else:
             return m
+
+    def LM(self, s_dict: dict = None):
+        """Return the Leading monom"""
+        return GenPoly.from_list([(self.degmax(), self.rep[self.degmax()])], self.gen)
 
     def LC(self, s_dict: dict = None) -> sp.Expr:
         """Return the Leading coefficient"""

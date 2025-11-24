@@ -2,7 +2,6 @@
 Custom algorithms for the project
 """
 
-from copy import copy
 from typing import Union
 
 import sympy as sp
@@ -421,35 +420,29 @@ def make_entire(
     """
     if gen_expr is None:
         gen_expr = sp.exp(rat_sym)
-
-    # extract the common denominator
-    num, den = expr.as_numer_denom()
-
-    # factorize the denominator, extract leading coefficient
-    p_den = sp.Poly(den, rat_sym)
-    lc = p_den.LC()
-    rts = sp.roots(p_den, rat_sym)
-
-    # start without denominator and iteratively add zeroes
     if rat_sym not in gen_expr.free_symbols:
         raise ValueError(
             "The expression to substitute for the GenPoly generator must "
             "contain the free variable of the rational coefficients."
         )
-    # entire_expr = sp.Add(*[num / lc * gen_expr**exp for num, exp in zip(nums, exps)])
+
+    # extract the common denominator
+    num, den = expr.as_numer_denom()
+
+    # factorize the denominator, extract leading coefficient for normalization
+    p_den = sp.Poly(den, rat_sym)
+    lc = p_den.LC()
+    rts = sp.roots(p_den, rat_sym)
+
+    # start without denominator and iteratively add zeroes
     entire_gpoly = GenPoly(num / lc, gen_expr)
     for r, m in rts.items():
-        # wes = entire_expr.subs(rat_sym, r)
-        # entire_expr = (entire_expr - wes) / (rat_sym - r) ** m
-        expr_at_r = entire_gpoly.as_expr().replace(rat_sym, r)
-        entire_expr = (entire_gpoly - expr_at_r) / (rat_sym - r) ** m
+        gp_at_r = entire_gpoly.as_expr().replace(rat_sym, r)
+        entire_gpoly = (entire_gpoly - gp_at_r) / (rat_sym - r) ** m
 
-    # re-Subs the generator expression
-    # w = sp.Wild("w", exclude=[rat_sym])
-    # r = entire_expr.replace(gen_expr**w, expr.gen**w)
-    r = GenPoly(entire_expr.as_dict(), expr.gen)
-
-    return r
+    # add offset term to original expression
+    p = entire_gpoly.as_dict()[0]
+    return expr + p
 
 
 def gplde(
@@ -480,7 +473,7 @@ def gplde(
     if q == 0:
         return q, r
     qe = make_entire(q, c_gen)
-    p = qe.as_dict()[0]
+    # p = qe.as_dict()[0]
     # re = r - p * y
     re = x - qe * y
     return qe, re
