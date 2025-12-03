@@ -7,7 +7,7 @@ import sympy as sp
 
 from .genpoly import GenPoly
 
-__all__ = ["check_singularities"]
+__all__ = ["check_singularities", "get_lccm", "is_col_reduced"]
 
 # seed using the 'cat ran over the keyboard' method
 rng = np.random.default_rng(56802470204575498132489694523498)
