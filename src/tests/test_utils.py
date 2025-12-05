@@ -155,23 +155,42 @@ def test_get_leading_column_degrees():
 
 
 def test_column_reduced_form():
-    s = sp.symbols("s")
-    m = sp.Matrix(
-        [
-            [s**3 + 1, s**4 - 3 * s**3 + 5 * s**2 + 7, s**5 + 17],
-            [0, s**2 + 1, 1],
-            [s**2, s**2, s**2],
-        ]
-    )
-    m_cr, u = column_reduced_form(m, s)
+    s, alpha, beta, m = sp.symbols("s alpha beta m")
+    exp = sp.exp
+    Matrix = sp.Matrix
+    if 1:
+        mat = Matrix(
+            [
+                [
+                    s * (4 * m**2 - m * s - 2) / m**2,
+                    (
+                        m * s
+                        - (-4 * m**2 + m * s + 2)
+                        * exp(2 * (alpha - beta) * (2 * m**2 - 1) / m)
+                    )
+                    * exp(-2 * (alpha - beta) * (2 * m**2 - 1) / m)
+                    / (4 * m**2 * (2 * m**2 - 1)),
+                ],
+                [0, -1 / (2 * m**2)],
+            ]
+        )
+    else:
+        mat = sp.Matrix(
+            [
+                [s**3 + 1, s**4 - 3 * s**3 + 5 * s**2 + 7, s**5 + 17],
+                [0, s**2 + 1, 1],
+                [s**2, s**2, s**2],
+            ]
+        )
+    mat_cr, u = column_reduced_form(mat, s)
     # works as expected
-    err = m @ u - m_cr
-    err = err.simplify()
-    assert err == sp.zeros(*m.shape)
+    err = mat @ u - mat_cr
+    err.simplify()
+    assert err == sp.zeros(*mat.shape)
     # is unimoldular
     assert not u.det().free_symbols
     # yields the desired outcome
-    assert is_col_reduced(m_cr, s)
+    assert is_col_reduced(mat_cr, s)
 
 
 @pytest.mark.skip("Takes too long")
