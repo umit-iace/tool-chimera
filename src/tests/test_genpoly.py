@@ -1,6 +1,6 @@
 import sympy as sp
 
-from pyform import GenPoly
+from chimera import GenPoly
 
 # generators
 sigma = sp.Symbol("sigma", positive=True)

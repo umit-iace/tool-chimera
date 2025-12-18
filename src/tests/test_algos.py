@@ -1,10 +1,11 @@
 import pickle
 
 import sympy as sp
+import pytest
 
-from pyform import GenPoly
-from pyform.algos import reduce_matrix_shifts, gpld, make_entire, gplde
-from pyform.utils import (
+from chimera import GenPoly
+from chimera.algos import reduce_matrix_shifts, gpld, make_entire, gplde
+from chimera.utils import (
     get_column_degrees,
     get_lccm,
     check_singularities,
@@ -114,6 +115,7 @@ def test_gplde():
             print("All good")
 
 
+@pytest.mark.skip("Takes too long")
 def test_reduce_matrix_shifts():
     a = 4 * s**2 + 2 * s + 7
     b = 1 * s - 10

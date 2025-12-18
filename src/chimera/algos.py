@@ -438,7 +438,7 @@ def make_entire(
     entire_gpoly = GenPoly(num / lc, gen_expr)
     for r, m in rts.items():
         for k in range(m):
-            gp_at_r = entire_gpoly.as_expr().replace(rat_sym, r)
+            gp_at_r = sp.limit(entire_gpoly.as_expr(), rat_sym, r)
             entire_gpoly = (entire_gpoly - gp_at_r) / (rat_sym - r)
 
     # add offset term to original expression

@@ -37,7 +37,7 @@ def get_coeffs(expr: sp.Expr, gen: sp.Symbol) -> dict:
     Helper function to return the coefficients of different powers
     of *gen* in *expr*.
     """
-    s = GenPoly(expr, gen=gen)
+    s = GenPoly(expr, gen)
     c = s.as_dict()
     return c
 

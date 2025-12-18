@@ -1,7 +1,7 @@
 [project]
-name = "pyform"
+name = "iace-chimera"
 version = "0.1.0"
-description = "Routines for normal form computations"
+description = "Computational Hyperbolic Input–output MIMO Equation Routines & Algebra"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -12,15 +12,18 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "pyform",
+    "iace-chimera",
     "pytest",
     "pytest-cov",
-    "black",
+    "ruff>=0.14.9",
 ]
 
 [build-system]
 requires = ["uv_build>=0.8.22,<0.9.0"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+    module-name = "chimera"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
@@ -28,8 +31,3 @@ addopts = "-s -o log_cli=True"
 testpaths = [
     "tests",
 ]
-[tool.uv.sources]
-pynf = { workspace = true }
-
-[tool.black]
-line-length = 88

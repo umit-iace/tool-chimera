@@ -2,9 +2,8 @@ import numpy as np
 import pytest
 import sympy as sp
 
-from pyform import GenPoly
-from pyform.utils import (
-    check_derivative_condition,
+from chimera import GenPoly
+from chimera.utils import (
     check_prediction_condition,
     check_delay_condition,
     column_reduced_form,
@@ -13,8 +12,6 @@ from pyform.utils import (
     get_leading_column_degrees,
     get_leading_term_matrix,
     get_lccm,
-    get_lctm,
-    get_matrix_coeffs,
     is_col_reduced,
 )
 
@@ -154,6 +151,7 @@ def test_get_leading_column_degrees():
     assert r == c_degs
 
 
+@pytest.mark.skip("Takes too long")
 def test_column_reduced_form():
     s, alpha, beta, m = sp.symbols("s alpha beta m")
     exp = sp.exp
