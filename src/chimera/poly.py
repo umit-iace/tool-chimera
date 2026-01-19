@@ -8,7 +8,7 @@ def row_hermite_form(A, x, domain=QQ):
     """
     Compute the row Hermite normal form H of a matrix A with entries in F[x],
     where F is a field (default: QQ), and a unimodular U over F[x] such that:
-        H = U * A
+        H = A * U
 
     Parameters
     ----------
@@ -44,12 +44,27 @@ def row_hermite_form(A, x, domain=QQ):
 
     U = DomainMatrix.eye(n, R)
 
+    def col_swap(M, i, j):
+        T = DomainMatrix.eye(n, R)
+        T[i, i] = 0
+        T[i, j] = 1
+        T[j, i] = 1
+        return M.matmul(T)
+
     def row_swap(M, i, j):
         T = DomainMatrix.eye(n, R)
         T[i, i] = 0
         T[i, j] = 1
         T[j, i] = 1
         return T.matmul(M)
+
+    def col_scale_constant(M, i, c):  # scale by nonzero constant in the field
+        if c == 0:
+            raise ValueError("Scaling by zero is not allowed.")
+
+        T = DomainMatrix.eye(n, R)
+        T[i, i] = R.convert(c)
+        return M.matmul(T)
 
     def row_scale_constant(M, i, c):  # scale by nonzero constant in the field
         if c == 0:
@@ -106,8 +121,10 @@ def row_hermite_form(A, x, domain=QQ):
             T[r, i] = v
             T[i, r] = -bg
             T[i, i] = ag
-            P = T.matmul(P)
-            U = T.matmul(U)
+            # P = T.matmul(P)
+            # U = T.matmul(U)
+            P = P.matmul(P)
+            U = U.matmul(U)
 
             # Now P[i,c] should be zero
             i += 1
@@ -120,23 +137,23 @@ def row_hermite_form(A, x, domain=QQ):
         lc = pivot.LC  # constant in the base field
         if lc != 1:
             inv_lc = domain.convert(1) / lc
-            P = row_scale_constant(P, r, inv_lc)
-            U = row_scale_constant(U, r, inv_lc)
+            P = col_scale_constant(P, r, inv_lc)
+            U = col_scale_constant(U, r, inv_lc)
 
-        # Reduce entries above the pivot in column c: make them zero using division
-        pivot = P[r, c].element  # monic now
+        # Reduce entries left the pivot in row c: make them zero using division
+        pivot = P[r,c].element  # monic now
         for i in range(r):
-            if P[i, c].is_zero():
+            if P[r,i].is_zero():
                 continue
-            q, rem = P[i, c].element.div(pivot)  # P[i,c] = q*pivot + rem
-            # row_i <- row_i - q * row_r, so entry becomes 'rem'
+            q, rem = P[r,i].element.div(pivot)  # P[r,i] = q*pivot + rem
+            # col_i <- col_i - q * col_c, so entry becomes 'rem'
             if not q.is_zero:
                 # Apply to P
-                for j in range(n):
-                    P[i, j] = P[i, j] - q * P[r, j]
-                # Apply to U
                 for j in range(m):
-                    U[i, j] = U[i, j] - q * U[r, j]
+                    P[j, i] = P[j, i] - q * P[r, c]
+                # Apply to U
+                for j in range(n):
+                    U[j, i] = U[j, i] - q * U[r, c]
         r += 1
 
     # return sympy matrices
