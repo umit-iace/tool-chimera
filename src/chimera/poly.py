@@ -1,9 +1,8 @@
 import sympy as sp
 
-from sympy import Matrix, symbols
+from sympy import Matrix
 from sympy.polys.polytools import Poly, gcdex
 from sympy.polys.domains import QQ
-
 
 
 def hermite_form1(mat: sp.Matrix, s_gen: sp.Symbol):
@@ -173,6 +172,7 @@ def hermite_form(A, x, domain=QQ):
     - Pivots are normalized to be monic (allowed because domain is a field).
     """
     m, n = A.shape
+
     # Convert to polynomial entries in the chosen domain
     def to_poly(a):
         if isinstance(a, Poly):
@@ -185,8 +185,13 @@ def hermite_form(A, x, domain=QQ):
 
     P = [[to_poly(A[i, j]) for j in range(n)] for i in range(m)]
     # U starts as identity over F[x]
-    U = [[Poly(1, x, domain=domain) if i == j else Poly(0, x, domain=domain)
-          for j in range(m)] for i in range(m)]
+    U = [
+        [
+            Poly(1, x, domain=domain) if i == j else Poly(0, x, domain=domain)
+            for j in range(m)
+        ]
+        for i in range(m)
+    ]
 
     def row_swap(M, i, j):
         M[i], M[j] = M[j], M[i]
@@ -233,9 +238,9 @@ def hermite_form(A, x, domain=QQ):
             # Normalize g to be monic
             # lc(g) is a nonzero constant in the field
             lc_g = g.LC()
-            u = (u / lc_g).set_domain(domain)
-            v = (v / lc_g).set_domain(domain)
-            g = (g / lc_g).set_domain(domain)
+            u = to_poly(u / lc_g)
+            v = to_poly(v / lc_g)
+            g = to_poly(g / lc_g)
 
             # Compute a/g and b/g (exact division in the polynomial ring)
             ag = a.quo(g)
@@ -298,3 +303,100 @@ def hermite_form(A, x, domain=QQ):
     H = Matrix([[p.as_expr() for p in row] for row in P])
     Umat = Matrix([[u.as_expr() for u in row] for row in U])
     return H, Umat
+
+
+def is_in_row_hermite_form(H, x, domain=QQ):
+    """
+    Check whether a polynomial matrix H over F[x] (F a field) is in row Hermite normal form.
+
+    Conditions checked:
+      1) Zero rows (if any) are at the bottom.
+      2) Each nonzero row has a pivot at its leftmost nonzero entry.
+      3) Pivot columns strictly increase down the rows.
+      4) Each pivot is monic.
+      5) Entries to the left of the pivot in its row are zero.
+      6) Entries below the pivot in its column are zero.
+      7) Entries above the pivot in its column have degree < degree(pivot).
+
+    Parameters
+    ----------
+    H : sympy.Matrix
+        Matrix with polynomial entries (or expressions) in x.
+    x : sympy.Symbol
+        The polynomial indeterminate.
+    domain : sympy Domain, optional
+        Base field for coefficients (default QQ).
+
+    Returns
+    -------
+    bool
+        True if H satisfies the row Hermite normal form conditions, False otherwise.
+    """
+    m, n = H.shape
+
+    # Convert to Poly objects
+    def to_poly(a):
+        if isinstance(a, Poly):
+            if a.gens != (x,):
+                a = Poly(a.as_expr(), x, domain=domain)
+            else:
+                a = a.set_domain(domain)
+            return a
+        return Poly(a, x, domain=domain)
+
+    P = [[to_poly(H[i, j]) for j in range(n)] for i in range(m)]
+
+    # Helper: polynomial degree (None for zero)
+    def poly_deg(p):
+        return None if p.is_zero else p.degree()
+
+    pivot_cols = []
+    zero_row_started = False
+
+    for i in range(m):
+        # Find pivot (leftmost nonzero) in row i
+        pivot_j = None
+        for j in range(n):
+            if not P[i][j].is_zero:
+                pivot_j = j
+                break
+
+        if pivot_j is None:
+            # Zero row
+            zero_row_started = True
+            continue
+        else:
+            # If we saw a zero row earlier, nonzero row afterward violates HNF
+            if zero_row_started:
+                return False
+
+        # Entries to the left of pivot must be zero
+        for j in range(pivot_j):
+            if not P[i][j].is_zero:
+                return False
+
+        pivot = P[i][pivot_j]
+        # Pivot must be monic
+        if pivot.LC() != domain.convert(1):
+            return False
+
+        # Pivot columns strictly increasing
+        if pivot_cols and pivot_j <= pivot_cols[-1]:
+            return False
+        pivot_cols.append(pivot_j)
+
+        # Check below-pivot zeros in the pivot column
+        for k in range(i + 1, m):
+            if not P[k][pivot_j].is_zero:
+                return False
+
+        # Check above-pivot reduction: degree(entry) < degree(pivot)
+        dpiv = pivot.degree()
+        for k in range(0, i):
+            pk = P[k][pivot_j]
+            if not pk.is_zero:
+                dpk = pk.degree()
+                if dpk >= dpiv:
+                    return False
+
+    return True
