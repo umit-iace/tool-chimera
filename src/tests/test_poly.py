@@ -1,17 +1,19 @@
 import sympy as sp
 
-from chimera.poly import hermite_form, is_in_row_hermite_form
+from chimera.poly import row_hermite_form, is_in_row_hermite_form
 
 
-def test_hermite_form():
+def test_row_hermite_form():
     s = sp.Symbol("s")
     a_mat = sp.Matrix(
         [
-            [2 * s**2 + 1 * s + 5, s + 2],
-            [1, s**3],
+            # [2 * s**2 + 1 * s + 5, s + 2],
+            # [1, s**3],
+            [s**2, s + 2],
+            [s**3, 2 * s + 2],
         ]
     )
-    h_mat, u_mat = hermite_form(a_mat, s)
+    h_mat, u_mat = row_hermite_form(a_mat, s)
     sp.pprint(h_mat)
     sp.pprint(u_mat)
 
