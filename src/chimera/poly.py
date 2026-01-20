@@ -1,4 +1,4 @@
-from sympy import Matrix
+from sympy import Matrix, Basic
 from sympy.polys.polytools import Poly
 from sympy.polys.domains import QQ
 from sympy.polys.matrices import DomainMatrix
@@ -42,89 +42,37 @@ def row_hermite_form(A, x, domain=QQ):
     else:
         P = DomainMatrix.from_Matrix(Matrix(A)).convert_to(R)
 
+    # Store transformation steps
     U = DomainMatrix.eye(n, R)
 
-    def col_swap(M, i, j):
-        T = DomainMatrix.eye(n, R)
-        T[i, i] = 0
-        T[i, j] = 1
-        T[j, i] = 1
-        return M.matmul(T)
-
-    def row_swap(M, i, j):
-        T = DomainMatrix.eye(n, R)
-        T[i, i] = 0
-        T[i, j] = 1
-        T[j, i] = 1
-        return T.matmul(M)
-
-    def col_scale_constant(M, i, c):  # scale by nonzero constant in the field
-        if c == 0:
-            raise ValueError("Scaling by zero is not allowed.")
-
-        T = DomainMatrix.eye(n, R)
-        T[i, i] = R.convert(c)
-        return M.matmul(T)
-
-    def row_scale_constant(M, i, c):  # scale by nonzero constant in the field
-        if c == 0:
-            raise ValueError("Scaling by zero is not allowed.")
-
-        T = DomainMatrix.eye(n, R)
-        T[i, i] = R.convert(c)
-        return T.matmul(M)
-
-    r = 0  # current pivot row
-    for c in range(n):
-        if r >= m:
+    c = 0  # current pivot col
+    for r in range(m):
+        if c >= n:
             break
-        # Find a row with nonzero entry in column c at or below r
-        pivot_row = None
+        # Find a row with nonzero entry in c at or below r
+        pivot_col = None
         for i in range(r, m):
             if not P[i, c].is_zero():
-                pivot_row = i
+                pivot_col = i
                 break
-        if pivot_row is None:
+        if pivot_col is None:
+            # all entries in this col are already zero
             continue
 
-        # Swap to bring pivot candidate to row r
-        if pivot_row != r:
-            P = row_swap(P, r, pivot_row)
-            U = row_swap(U, r, pivot_row)
+        # Swap to bring pivot candidate to col c
+        if pivot_col != c:
+            P = col_swap(P, c, pivot_col)
+            U = col_swap(U, c, pivot_col)
 
-        # Clear entries below in column c using 2x2 unimodular transformations
+        # Clear entries below the pivot in column c
         i = r + 1
         while i < m:
             if P[i, c].is_zero():
                 i += 1
                 continue
 
-            a = P[r, c].element
-            b = P[i, c].element
-            # Extended GCD: u*a + v*b = g
-            u, v, g = R.gcdex(a, b)
-            # Normalize g to be monic
-            # lc(g) is a nonzero constant in the field
-            lc_g = g.LC
-            u = R.quo(u, lc_g)
-            v = R.quo(v, lc_g)
-            g = R.quo(g, lc_g)
-
-            # Compute a/g and b/g (exact division in the polynomial ring)
-            ag = a.quo(g)
-            bg = b.quo(g)
-
-            # 2x2 unimodular block M = [[u, v], [ -b/g, a/g ]]
-            # Apply to the pair of rows (r, i) on both P and U
-            T = DomainMatrix.eye(n, P.domain)
-            T[r, r] = u
-            T[r, i] = v
-            T[i, r] = -bg
-            T[i, i] = ag
-            # P = T.matmul(P)
-            # U = T.matmul(U)
-            P = P.matmul(P)
-            U = U.matmul(U)
+            # zero entry P[i,c]
+            P, U = col_gcd(P, U, r, i, pivot_col)
 
             # Now P[i,c] should be zero
             i += 1
@@ -141,11 +89,11 @@ def row_hermite_form(A, x, domain=QQ):
             U = col_scale_constant(U, r, inv_lc)
 
         # Reduce entries left the pivot in row c: make them zero using division
-        pivot = P[r,c].element  # monic now
+        pivot = P[r, c].element  # monic now
         for i in range(r):
-            if P[r,i].is_zero():
+            if P[r, i].is_zero():
                 continue
-            q, rem = P[r,i].element.div(pivot)  # P[r,i] = q*pivot + rem
+            q, rem = P[r, i].element.div(pivot)  # P[r,i] = q*pivot + rem
             # col_i <- col_i - q * col_c, so entry becomes 'rem'
             if not q.is_zero:
                 # Apply to P
@@ -160,6 +108,146 @@ def row_hermite_form(A, x, domain=QQ):
     H = P.to_Matrix()
     Umat = U.to_Matrix()
     return H, Umat
+
+
+def echelon_form(A, x, domain=QQ, mode: str = "pre"):
+    if mode == "pre":
+        M = A.copy()
+    elif mode == "post":
+        M = A.T.copy()
+    else:
+        raise ValueError(f"Mode '{mode}' not supported.")
+
+    n, m = M.shape
+    R = domain.poly_ring(x)
+
+    # Convert input to DomainMatrix over R
+    if isinstance(M, DomainMatrix):
+        P = M if M.domain == R else M.convert_to(R)
+    else:
+        P = DomainMatrix.from_Matrix(M).convert_to(R)
+
+    # Store transformation steps
+    U = DomainMatrix.eye(n, R)
+
+    # Eliminate row entries by pre-multiplication (row operations)
+    r = 0
+    for k in range(m):
+        for i in range(r + 1, n):
+            P, U = row_gcd(P, U, r, i, k)
+        if not P[r, k].is_zero():
+            r += 1
+
+    P_mat = P.to_Matrix()
+    U_mat = U.to_Matrix()
+    if mode == "post":
+        return P_mat.T, U_mat.T
+    else:
+        return P_mat, U_mat
+
+
+def row_gcd(
+    P: DomainMatrix, U: DomainMatrix, r: int, i: int, c: int
+) -> tuple[DomainMatrix, DomainMatrix]:
+    m, n = P.shape
+    R = P.domain
+
+    a = P[r, c].element
+    b = P[i, c].element
+    # Extended GCD: u*a + v*b = g
+    s, t, g = R.gcdex(a, b)
+    # Normalize g to be monic
+    # lc(g) is a nonzero constant in the field
+    lc_g = g.LC
+    s = R.quo(s, lc_g)
+    t = R.quo(t, lc_g)
+    g = R.quo(g, lc_g)
+
+    # Compute a/g and b/g (exact division in the polynomial ring)
+    v = a.quo(g)
+    u = -b.quo(g)
+
+    # 2x2 unimodular block M = [[u, v], [ -b/g, a/g ]]
+    # Apply to the pair of rows (r, i) on both P and U
+    T = DomainMatrix.eye(n, R)
+    T[r, r] = s
+    T[r, i] = t
+    T[i, r] = u
+    T[i, i] = v
+    P = T.matmul(P)
+    U = T.matmul(U)
+    return P, U
+
+
+def row_swap(M: DomainMatrix, i: int, j: int):
+    T = DomainMatrix.eye(M.shape[0], M.domain)
+    T[i, i] = 0
+    T[i, j] = 1
+    T[j, i] = 1
+    return T.matmul(M)
+
+
+def col_swap(M: DomainMatrix, i: int, j: int):
+    T = DomainMatrix.eye(M.shape[1], M.domain)
+    T[i, i] = 0
+    T[i, j] = 1
+    T[j, i] = 1
+    return M.matmul(T)
+
+
+def row_scale_constant(M: DomainMatrix, i: int, c: Basic):
+    # scale by nonzero constant in the field
+    if c == 0:
+        raise ValueError("Scaling by zero is not allowed.")
+
+    T = DomainMatrix.eye(M.shape[0], M.domain)
+    T[i, i] = M.domain.convert(c)
+    return T.matmul(M)
+
+
+def col_scale_constant(M: DomainMatrix, i: int, c: Basic):
+    # scale by nonzero constant in the field
+    if c == 0:
+        raise ValueError("Scaling by zero is not allowed.")
+
+    T = DomainMatrix.eye(M.shape[1], M.domain)
+    T[i, i] = M.domain.convert(c)
+    return M.matmul(T)
+
+
+def col_gcd(
+    P: DomainMatrix, U: DomainMatrix, r: int, i: int, j: int
+) -> tuple[DomainMatrix, DomainMatrix]:
+    m, n = P.shape
+    R = P.domain
+
+    a = P[r, c].element
+    b = P[i, c].element
+    # Extended GCD: u*a + v*b = g
+    u, v, g = R.gcdex(a, b)
+    # Normalize g to be monic
+    # lc(g) is a nonzero constant in the field
+    lc_g = g.LC
+    u = R.quo(u, lc_g)
+    v = R.quo(v, lc_g)
+    g = R.quo(g, lc_g)
+
+    # Compute a/g and b/g (exact division in the polynomial ring)
+    ag = a.quo(g)
+    bg = b.quo(g)
+
+    # 2x2 unimodular block M = [[u, v], [ -b/g, a/g ]]
+    # Apply to the pair of rows (r, i) on both P and U
+    T = DomainMatrix.eye(n, R)
+    T[r, r] = u
+    T[r, i] = v
+    T[i, r] = -bg
+    T[i, i] = ag
+    # P = T.matmul(P)
+    # U = T.matmul(U)
+    P = P.matmul(P)
+    U = U.matmul(U)
+    return P, U
 
 
 def is_in_row_hermite_form(H, x, domain=QQ):
