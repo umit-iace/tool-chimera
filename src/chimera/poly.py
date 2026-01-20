@@ -111,13 +111,13 @@ def row_hermite_form(A, x, domain=QQ):
 
 
 def echelon_form(A, x, domain=QQ, mode: str = "pre"):
-    if mode == "pre":
-        M = A.copy()
-    elif mode == "post":
-        M = A.T.copy()
-    else:
-        raise ValueError(f"Mode '{mode}' not supported.")
+    """
+    Compute the row echelon form of a matrix
 
+    This method will yield an upper right triangular form either using
+    pre oder post multiplication with a unimodular matrix.
+    """
+    M = A.copy()
     n, m = M.shape
     R = domain.poly_ring(x)
 
@@ -130,31 +130,95 @@ def echelon_form(A, x, domain=QQ, mode: str = "pre"):
     # Store transformation steps
     U = DomainMatrix.eye(n, R)
 
-    # Eliminate row entries by pre-multiplication (row operations)
-    r = 0
-    for k in range(m):
-        for i in range(r + 1, n):
-            P, U = row_gcd(P, U, r, i, k)
-        if not P[r, k].is_zero():
-            r += 1
+    if mode == "pre":
+        # Eliminate row entries by pre-multiplication (row operations)
+        r = 0
+        for c in range(m):
+            for i in range(r + 1, n):
+                P, U = row_gcd(P, U, r, i, c)
+            if not P[r, c].is_zero():
+                r += 1
+        if 0:
+            # satisfy requirement (r2), TBD
+            r = 1
+            for k in range(m):
+                pivot = P[r, k].element
+                if not pivot.is_zero:
+                    # Make pivots monic
+                    scale = 1 / pivot.LC
+                    P, U = row_scale_constant(P, U, r, scale)
+                    # Scale row with pivot
+                    for i in range(r - 1):
+                        q = R.quo(P[i, k], P[r, k]).element
+                        P, U = row_add(P, U, r, i, -q)
+                    r += 1
+    elif mode == "post":
+        # Eliminate row entries by post-multiplication (col operations)
+        c = m - 1
+        for r in range(n - 1, -1, -1):
+            for i in range(c - 1, -1, -1):
+                P, U = col_gcd(P, U, c, i, r)
+            if not P[r, c].is_zero():
+                c -= 1
+
+    else:
+        raise ValueError(f"Mode '{mode}' not supported.")
 
     P_mat = P.to_Matrix()
     U_mat = U.to_Matrix()
-    if mode == "post":
-        return P_mat.T, U_mat.T
-    else:
-        return P_mat, U_mat
+    return P_mat, U_mat
+
+
+def col_gcd(
+    P: DomainMatrix, U: DomainMatrix, c: int, i: int, r: int
+) -> tuple[DomainMatrix, DomainMatrix]:
+    """
+    Use the entry P[r,c] to zero the element P[r,i] using an unimodular right transform
+
+    This will also set P[r,c] to the GCD of P[r,c] and P[r,i].
+    """
+    R = P.domain
+    # pivot element
+    a = P[r, c].element
+    # element to zero
+    b = P[r, i].element
+    # Extended GCD: s*a + t*b = g
+    s, t, g = R.gcdex(a, b)
+    # Normalize g to be monic
+    lc_g = g.LC
+    s = R.quo(s, lc_g)
+    t = R.quo(t, lc_g)
+    g = R.quo(g, lc_g)
+
+    # Compute a/g and b/g (exact division in the polynomial ring)
+    v = a.quo(g)
+    u = -b.quo(g)
+
+    # 2x2 unimodular block T = [[s, u], [t, v]]
+    T = DomainMatrix.eye(P.shape[1], R)
+    T[r, r] = s
+    T[r, i] = u
+    T[i, r] = t
+    T[i, i] = v
+    P = P.matmul(T)
+    U = U.matmul(T)
+    return P, U
 
 
 def row_gcd(
     P: DomainMatrix, U: DomainMatrix, r: int, i: int, c: int
 ) -> tuple[DomainMatrix, DomainMatrix]:
-    m, n = P.shape
-    R = P.domain
+    """
+    Use the entry P[r,c] to zero the element P[i,c] using an unimodular left transform
 
+    This will also set P[r,c] to the GCD of P[r,c] and P[i,c].
+    """
+    R = P.domain
+    # pivot element
     a = P[r, c].element
+    # element to zero
     b = P[i, c].element
-    # Extended GCD: u*a + v*b = g
+    # Extended GCD: s*a + t*b = g
     s, t, g = R.gcdex(a, b)
     # Normalize g to be monic
     # lc(g) is a nonzero constant in the field
@@ -167,9 +231,8 @@ def row_gcd(
     v = a.quo(g)
     u = -b.quo(g)
 
-    # 2x2 unimodular block M = [[u, v], [ -b/g, a/g ]]
-    # Apply to the pair of rows (r, i) on both P and U
-    T = DomainMatrix.eye(n, R)
+    # 2x2 unimodular block T = [[s, t], [v, u]]
+    T = DomainMatrix.eye(P.shape[0], R)
     T[r, r] = s
     T[r, i] = t
     T[i, r] = u
@@ -182,6 +245,7 @@ def row_gcd(
 def row_swap(M: DomainMatrix, i: int, j: int):
     T = DomainMatrix.eye(M.shape[0], M.domain)
     T[i, i] = 0
+    T[j, j] = 0
     T[i, j] = 1
     T[j, i] = 1
     return T.matmul(M)
@@ -190,19 +254,29 @@ def row_swap(M: DomainMatrix, i: int, j: int):
 def col_swap(M: DomainMatrix, i: int, j: int):
     T = DomainMatrix.eye(M.shape[1], M.domain)
     T[i, i] = 0
+    T[j, j] = 0
     T[i, j] = 1
     T[j, i] = 1
     return M.matmul(T)
 
 
-def row_scale_constant(M: DomainMatrix, i: int, c: Basic):
+def row_add(M: DomainMatrix, U: DomainMatrix, r: int, i: int, c: Basic):
+    """
+    Add row r to row i after scaling it with c
+    """
+    T = DomainMatrix.eye(M.shape[0], M.domain)
+    T[i, r] = M.domain.convert(c)
+    return T.matmul(M), T.matmul(U)
+
+
+def row_scale_constant(M: DomainMatrix, U: DomainMatrix, i: int, c: Basic):
     # scale by nonzero constant in the field
     if c == 0:
         raise ValueError("Scaling by zero is not allowed.")
 
     T = DomainMatrix.eye(M.shape[0], M.domain)
     T[i, i] = M.domain.convert(c)
-    return T.matmul(M)
+    return T.matmul(M), T.matmul(U)
 
 
 def col_scale_constant(M: DomainMatrix, i: int, c: Basic):
@@ -215,39 +289,13 @@ def col_scale_constant(M: DomainMatrix, i: int, c: Basic):
     return M.matmul(T)
 
 
-def col_gcd(
-    P: DomainMatrix, U: DomainMatrix, r: int, i: int, j: int
-) -> tuple[DomainMatrix, DomainMatrix]:
-    m, n = P.shape
-    R = P.domain
-
-    a = P[r, c].element
-    b = P[i, c].element
-    # Extended GCD: u*a + v*b = g
-    u, v, g = R.gcdex(a, b)
-    # Normalize g to be monic
-    # lc(g) is a nonzero constant in the field
-    lc_g = g.LC
-    u = R.quo(u, lc_g)
-    v = R.quo(v, lc_g)
-    g = R.quo(g, lc_g)
-
-    # Compute a/g and b/g (exact division in the polynomial ring)
-    ag = a.quo(g)
-    bg = b.quo(g)
-
-    # 2x2 unimodular block M = [[u, v], [ -b/g, a/g ]]
-    # Apply to the pair of rows (r, i) on both P and U
-    T = DomainMatrix.eye(n, R)
-    T[r, r] = u
-    T[r, i] = v
-    T[i, r] = -bg
-    T[i, i] = ag
-    # P = T.matmul(P)
-    # U = T.matmul(U)
-    P = P.matmul(P)
-    U = U.matmul(U)
-    return P, U
+def is_in_echelon_form(mat: Matrix):
+    m, n = mat.shape
+    for r in range(m):
+        for c in range(r):
+            if not mat[r, c].is_zero:
+                return False
+    return True
 
 
 def is_in_row_hermite_form(H, x, domain=QQ):
