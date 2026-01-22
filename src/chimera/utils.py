@@ -177,10 +177,13 @@ def get_term(
         tdd = sp.Poly(_dp.EM(), _dp.gens).degree()
         if tdn == tdd == sp.S.NegativeInfinity:
             td = 0
+        else:
+            td = tdn -tdd
         return (lc, ld), (tc, td)
 
     def _handle_coefficients(_p, sym):
-        ld = td = 0
+        ld = 0
+        td = sp.S.Infinity
         for c in _p.coefficients():
             (_lc, _ld), (_tc, _td) = get_term(c, sym)
             if _ld >= ld:
