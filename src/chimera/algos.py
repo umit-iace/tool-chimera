@@ -480,16 +480,22 @@ def gplde(
     return qe, re
 
 
-def get_column_reduction_transform(mat, col, p_gen):
+def get_column_reduction_transform(mat, col, p_gen, gp_gen=None):
     l_mat = sp.Matrix.eye(mat.shape[0])
     for i in range(col + 1, mat.shape[0]):
-        qe, re = gplde(mat[i, col], mat[col, col], p_gen)
-        l_mat[i, col] = -qe
+        x = GenPoly(mat[i, col], gp_gen)
+        y = GenPoly(mat[col, col], gp_gen)
+        # x = mat[i, col]
+        # y = mat[col, col]
+        qe, re = gplde(x, y, p_gen)
+        l_mat[i, col] = -qe.as_expr()
+        # l_mat[i, col] = -qe
     return l_mat
 
 
 def reduce_matrix_shifts(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
-    gp_mat = mat.applyfunc(lambda x: GenPoly(x, gp_gen))
+    # gp_mat = mat.applyfunc(lambda x: GenPoly(x, gp_gen))
+    gp_mat = mat.copy()
     check_canonical_form(gp_mat, p_gen, gp_gen)
 
     l_mat = sp.Matrix.eye(mat.shape[0])
@@ -497,9 +503,11 @@ def reduce_matrix_shifts(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
         print(f"Reducing row {i}")
         for j in range(mat.shape[0] - 1):
             print(f"Reducing col {j}")
-            lc = get_column_reduction_transform(gp_mat, j, p_gen)
-            gp_mat = (lc @ gp_mat).applyfunc(lambda x: GenPoly(x, gp_gen))
-            l_mat = (lc @ l_mat).applyfunc(lambda x: GenPoly(x, gp_gen))
+            lc = get_column_reduction_transform(gp_mat, j, p_gen, gp_gen)
+            gp_mat = lc @ gp_mat
+            l_mat = lc @ l_mat
+            # gp_mat = (lc @ gp_mat).applyfunc(lambda x: GenPoly(x, gp_gen))
+            # l_mat = (lc @ l_mat).applyfunc(lambda x: GenPoly(x, gp_gen))
 
     return gp_mat, l_mat
 
