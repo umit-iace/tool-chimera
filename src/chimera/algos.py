@@ -443,7 +443,7 @@ def make_entire(
             entire_gpoly = (entire_gpoly - gp_at_r) / (rat_sym - r)
 
     # add offset term to original expression
-    p = entire_gpoly.as_dict()[0]
+    p = entire_gpoly.as_dict().get(0, sp.S.Zero)
     return expr + p
 
 
@@ -475,7 +475,7 @@ def gplde(
     if q.is_zero:
         return q, r
     qe = make_entire(q, c_gen)
-    p = qe.as_dict()[0]
+    p = qe.as_dict().get(0, sp.S.Zero)
     re = r - p * y
     return qe, re
 
