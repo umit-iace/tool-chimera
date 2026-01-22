@@ -6,14 +6,14 @@ from chimera import GenPoly
 from chimera.utils import (
     check_prediction_condition,
     check_delay_condition,
-    column_reduced_form,
     generate_integer_transform,
     get_coeffs,
     get_leading_column_degrees,
     get_leading_term_matrix,
     get_lccm,
-    is_col_reduced,
+    is_col_reduced, factor_diag_pre, factor_diag_post,
 )
+from chimera.poly import column_reduced_form
 
 
 def test_get_coeff():
@@ -241,3 +241,16 @@ def test_generate_transform():
     q21 = Sinv[4, :]
     q22 = Sinv[4, :] @ A
     Q = np.vstack((q11, q12, q13, q21, q22))
+
+
+def test_factor_diag():
+    h_mat = sp.MatrixSymbol("H", 5 ,5).as_explicit()
+    del_mat = sp.Matrix.diag(sp.symbols("d_{:6}"))
+
+    # test it
+    r = del_mat @ h_mat
+    f = factor_diag_pre(r, del_mat)
+    assert del_mat @ f - r == sp.Matrix.zeros(*h_mat.shape)
+
+    f = factor_diag_post(r, del_mat)
+    assert f @ del_mat - r == sp.Matrix.zeros(*h_mat.shape)

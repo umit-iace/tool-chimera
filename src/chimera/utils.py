@@ -1,16 +1,21 @@
 """
 Utility functions
 """
+from random import randint
 
 import numpy as np
 import sympy as sp
+from sympy import random_poly
+from sympy.core.random import seed
 
 from .genpoly import GenPoly
 
 __all__ = ["check_singularities", "get_lccm", "is_col_reduced"]
 
 # seed using the 'cat ran over the keyboard' method
-rng = np.random.default_rng(56802470204575498132489694523498)
+rng_seed = 56802470204575498132489694523498
+rng = np.random.default_rng(rng_seed)
+seed(rng_seed)
 
 
 def generate_integer_transform(dim: int, max_entry: int = 4) -> np.ndarray:
@@ -270,90 +275,6 @@ def is_col_reduced(mat: sp.Matrix, sym: sp.Symbol, subs: dict = None):
     return lcm.rank() == min(mat.shape)
 
 
-def column_reduced_form(
-    mat: sp.Matrix, sym: sp.Symbol, debug: bool = False
-) -> tuple[sp.Matrix, sp.Matrix]:
-    """
-    Compute the column reduced form S of a matrix mat by using
-    an unimodular right transformation :math:`M U = S`.
-
-    Returns: Tuple(S, U)
-    """
-    u = sp.eye(mat.shape[0])
-    m = mat.copy()
-    n = 0
-    while not is_col_reduced(m, sym):
-        # display(m)
-        if debug:
-            print(f"Iteration {n}")
-            # display(m)
-        # sort into decreasing column degrees
-        cds = get_leading_column_degrees(m, sym)
-        # display(cds)
-        if sorted(cds, reverse=True) != cds:
-            # print("Permutating")
-            s_idxs = np.argsort(cds).tolist()[::-1]
-            perm = sp.combinatorics.Permutation(s_idxs)
-            p = sp.PermutationMatrix(perm).as_explicit().T
-            # display(p)
-            m = m @ p
-            u = u @ p
-            # display(m)
-
-        # select pivot column index k
-        mh = get_lccm(m, sym)
-        cds = get_leading_column_degrees(m, sym)
-
-        # display(mh)
-        # display(cds)
-        for k in range(m.shape[1]):
-            # print(f"Testing k={k}")
-            lc = False
-
-            for q in range(k + 1, m.shape[1]):
-                # check if mh[k] can be expressed as linear combination
-                # of columns mh[k:]
-                # print(f"Testing colums {k+1} to {q}")
-
-                # compute basis coefficients
-                cs = sp.symbols(f"c_{k + 2}:{q - k + 2}")
-                # display(cs)
-                # pad them for the first k columns
-                csp = tuple(0 for n in range(k + 1)) + cs
-                expr = mh[:, k] - sp.Add(
-                    *[csp[i] * mh[:, i] for i in range(k + 1, q + 1)]
-                )
-                # display(expr)
-                cfs = sp.solve(expr, cs)
-                # display(cfs)
-                if cfs:
-                    lc = True
-                    # print("Found a linear combination")
-                    break
-
-            if lc:
-                break
-
-        # eliminate kth column from mh
-        r = sp.Matrix.zeros(*m.shape)
-        for i in range(r.rows):
-            for j in range(r.cols):
-                if i == j:
-                    r[i, j] = 1
-                elif i > k and i <= q and j == k:
-                    r[i, j] = -cfs[csp[i - k]] * sym ** (cds[k] - cds[i])
-                else:
-                    r[i, j] = 0
-        # display(r)
-        m = m @ r
-        m.expand()
-        m.simplify()
-        u = u @ r
-        n = n + 1
-
-    return m, u
-
-
 def check_derivative_condition(mat, diff_sym):
     return is_col_reduced(mat, diff_sym)
 
@@ -460,3 +381,40 @@ def check_singularities(
                 return False
     else:
         return True
+
+
+def random_poly_mat(m, n, order, c_min, c_max, p_gen):
+    mat = sp.Matrix([random_poly(p_gen, randint(0,order), c_min, c_max) for i in range(m*n)]).reshape(m,n)
+    return mat
+
+
+def zero_lower_left(mat):
+    res = sp.MutableDenseMatrix(mat)
+    for r in range(mat.shape[0]):
+        for c in range(0, r):
+            res[r,c] = 0
+    return res
+
+
+def zero_upper_right(mat):
+    res = sp.MutableDenseMatrix(mat)
+    for r in range(mat.shape[0]):
+        for c in range(r+1, mat.shape[1]):
+            res[r,c] = 0
+    return res
+
+
+def factor_diag_pre(mat, diag_mat):
+    assert  diag_mat.shape[1] == mat.shape[0]
+    res = sp.Matrix.zeros(*mat.shape)
+    for r in range(mat.shape[0]):
+        res[r, :] = mat[r, :] / diag_mat[r, r]
+    return res
+
+
+def factor_diag_post(mat, diag_mat):
+    assert mat.shape[1] == diag_mat.shape[0]
+    res = sp.Matrix.zeros(*mat.shape)
+    for c in range(mat.shape[1]):
+        res[:, c] = mat[:, c] / diag_mat[c, c]
+    return res

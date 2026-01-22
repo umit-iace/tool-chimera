@@ -2,12 +2,13 @@
 Custom algorithms for the project
 """
 
-from typing import Union
+from typing import Union, Tuple
 
 import sympy as sp
 
+from .poly import echelon_form, column_reduced_form
 from .genpoly import GenPoly
-from .utils import get_matrix_terms, get_leading_term_matrix
+from .utils import get_matrix_terms, get_leading_term_matrix, factor_diag_post
 
 __all__ = ["gpld", "make_entire", "gplde", "gcdexs", "bezouts"]
 
@@ -529,3 +530,72 @@ def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
             raise ValueError(
                 f"Given matrix does not exhibit increasing shift intervals in column {j}."
             )
+
+
+def eliminate_delays_ur_post(mat: sp.Matrix, p_gen: sp.Symbol, s_gen: sp.Symbol) -> Tuple[sp.Matrix, sp.Matrix]:
+    """
+    Eliminate all delays right of the main diagonal
+    """
+    r_mat = sp.Matrix.eye(mat.shape[1])
+    for r in range(mat.shape[0]):
+        pivot = GenPoly(mat[r,r], s_gen)
+        for c in range(r+1, mat.shape[1]):
+            elem = GenPoly(mat[r,c], s_gen)
+            quo, rem = gplde(elem, pivot, p_gen)
+            r_mat[r, c] = -quo.as_expr()
+    res = mat @ r_mat
+    res.simplify()
+    return res, r_mat
+
+
+def eliminate_delays(h_mat: sp.Matrix, del_mat: sp.Matrix, p_gen: sp.Symbol, s_gen: sp.Symbol) -> Tuple[sp.Matrix, sp.Matrix, sp.Matrix]:
+    """
+    Compute transformation that will eliminate all delays in a given system
+
+    Parameters
+    ----------
+    h_mat
+    del_mat
+    p_gen
+    s_gen
+
+    Returns
+    -------
+    ht_mat, r_mat, ri_mat
+    """
+    # print("Step 0: Original matrices")
+    # display(h_mat)
+    # display(del_mat)
+
+    # print("Step 1a: Echelon form")
+    h1, r1i = echelon_form(h_mat, p_gen, mode="post")
+    # display(h1)
+    # display(r1i)
+
+    # print("Step 1b: Factor out delay matrix")
+    h1p = factor_diag_post(del_mat @ h1, del_mat)
+    # display(h1p)
+
+    # print("Step 2: Eliminate delays")
+    h2, r2i = eliminate_delays_ur_post(h1p, p_gen, s_gen)
+    # display(h2)
+    # display(r2i)
+
+    # print("Step 3: Col reduced form")
+    ht, r3i = column_reduced_form(h2, p_gen)
+    # display(ht)
+    # display(r3i)
+
+    # print("Result: Transform for y:")
+    ri_mat = r1i @ del_mat.inv() @ r2i @ r3i
+    r_mat = r3i.inv() @ r2i.inv() @ del_mat @ r1i.inv()
+    # display(r_mat)
+
+    # check consistency
+    # print("Error:")
+    err = del_mat @ h_mat - ht @ r_mat
+    err = err.applyfunc(sp.simplify)
+    # display(err)
+    assert err == sp.Matrix.zeros(*err.shape)
+
+    return ht, r_mat, ri_mat

@@ -1,7 +1,13 @@
+import numpy as np
+import sympy as sp
 from sympy import Matrix, Basic
 from sympy.polys.polytools import Poly
 from sympy.polys.domains import QQ
 from sympy.polys.matrices import DomainMatrix
+
+from .utils import is_col_reduced, get_lccm, get_leading_column_degrees
+
+__all__ = ["echelon_form", "column_reduced_form"]
 
 
 def row_hermite_form(A, x, domain=QQ):
@@ -12,7 +18,7 @@ def row_hermite_form(A, x, domain=QQ):
 
     Parameters
     ----------
-    A : sympy.Matrix
+    A : sp.Matrix
         Matrix with entries that are polynomials (or expressions) in x.
     x : sympy.Symbol
         The polynomial indeterminate.
@@ -393,3 +399,87 @@ def is_in_row_hermite_form(H, x, domain=QQ):
                     return False
 
     return True
+
+
+def column_reduced_form(
+    mat: sp.Matrix, sym: sp.Symbol, debug: bool = False
+) -> tuple[sp.Matrix, sp.Matrix]:
+    """
+    Compute the column reduced form S of a matrix mat by using
+    an unimodular right transformation :math:`M U = S`.
+
+    Returns: Tuple(S, U)
+    """
+    u = sp.eye(mat.shape[0])
+    m = mat.copy()
+    n = 0
+    while not is_col_reduced(m, sym):
+        # display(m)
+        if debug:
+            print(f"Iteration {n}")
+            # display(m)
+        # sort into decreasing column degrees
+        cds = get_leading_column_degrees(m, sym)
+        # display(cds)
+        if sorted(cds, reverse=True) != cds:
+            # print("Permutating")
+            s_idxs = np.argsort(cds).tolist()[::-1]
+            perm = sp.combinatorics.Permutation(s_idxs)
+            p = sp.PermutationMatrix(perm).as_explicit().T
+            # display(p)
+            m = m @ p
+            u = u @ p
+            # display(m)
+
+        # select pivot column index k
+        mh = get_lccm(m, sym)
+        cds = get_leading_column_degrees(m, sym)
+
+        # display(mh)
+        # display(cds)
+        for k in range(m.shape[1]):
+            # print(f"Testing k={k}")
+            lc = False
+
+            for q in range(k + 1, m.shape[1]):
+                # check if mh[k] can be expressed as linear combination
+                # of columns mh[k:]
+                # print(f"Testing colums {k+1} to {q}")
+
+                # compute basis coefficients
+                cs = sp.symbols(f"c_{k + 2}:{q - k + 2}")
+                # display(cs)
+                # pad them for the first k columns
+                csp = tuple(0 for n in range(k + 1)) + cs
+                expr = mh[:, k] - sp.Add(
+                    *[csp[i] * mh[:, i] for i in range(k + 1, q + 1)]
+                )
+                # display(expr)
+                cfs = sp.solve(expr, cs)
+                # display(cfs)
+                if cfs:
+                    lc = True
+                    # print("Found a linear combination")
+                    break
+
+            if lc:
+                break
+
+        # eliminate kth column from mh
+        r = sp.Matrix.zeros(*m.shape)
+        for i in range(r.rows):
+            for j in range(r.cols):
+                if i == j:
+                    r[i, j] = 1
+                elif i > k and i <= q and j == k:
+                    r[i, j] = -cfs[csp[i - k]] * sym ** (cds[k] - cds[i])
+                else:
+                    r[i, j] = 0
+        # display(r)
+        m = m @ r
+        m.expand()
+        m.simplify()
+        u = u @ r
+        n = n + 1
+
+    return m, u
