@@ -132,7 +132,7 @@ def echelon_form(A, x, domain=QQ, mode: str = "pre"):
     if isinstance(M, DomainMatrix):
         P = M if M.domain == R else M.convert_to(R)
     else:
-        P = DomainMatrix.from_Matrix(M).convert_to(R)
+        P = DomainMatrix.from_Matrix(M, gens=x).convert_to(R)
 
     # Store transformation steps
     U = DomainMatrix.eye(n, R)

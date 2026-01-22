@@ -10,7 +10,7 @@ from .poly import echelon_form, column_reduced_form
 from .genpoly import GenPoly
 from .utils import get_matrix_terms, get_leading_term_matrix, factor_diag_post
 
-__all__ = ["gpld", "make_entire", "gplde", "gcdexs", "bezouts"]
+__all__ = ["gpld", "make_entire", "gplde", "eliminate_delays"]
 
 
 def gcdexs(
