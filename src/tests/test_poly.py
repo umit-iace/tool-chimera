@@ -1,20 +1,18 @@
-from random import randint
+import pytest
 import sympy as sp
 
-from chimera.poly import row_hermite_form, is_in_row_hermite_form, echelon_form
-from poly import is_in_echelon_form
+from chimera.poly import (
+    row_hermite_form,
+    is_in_row_hermite_form,
+    echelon_form,
+    is_in_echelon_form,
+)
+from chimera.utils import random_poly_mat
 
 
 def test_echelon_form():
     s = sp.Symbol("s")
-    m = 3
-    n = 3
-    a_mat = sp.Matrix.zeros(m, n)
-    for r in range(m):
-        for c in range(n):
-            deg = randint(0, 5)
-            cffs = [randint(-5, 5) for d in range(deg + 1)]
-            a_mat[r, c] = sp.Poly.from_list(cffs, s).as_expr()
+    a_mat = random_poly_mat(3, 3, 3, -5, 5, s)
 
     print("Initial matrix:")
     sp.pprint(a_mat)
@@ -49,6 +47,18 @@ def test_echelon_form():
     assert s not in u_mat.det().free_symbols
 
 
+def test_is_in_echelon_form():
+    m = sp.Matrix.eye(4)
+    assert is_in_echelon_form(m)
+
+    m[1, 2] = 1
+    assert is_in_echelon_form(m)
+
+    m[3, 1] = 1
+    assert not is_in_echelon_form(m)
+
+
+@pytest.mark.skip("Not done yet")
 def test_row_hermite_form():
     s = sp.Symbol("s")
     a_mat = sp.Matrix(

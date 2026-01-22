@@ -12,6 +12,7 @@ __all__ = ["echelon_form", "column_reduced_form"]
 
 def row_hermite_form(A, x, domain=QQ):
     """
+    TODO: Currently this does not work
     Compute the row Hermite normal form H of a matrix A with entries in F[x],
     where F is a field (default: QQ), and a unimodular U over F[x] such that:
         H = A * U
