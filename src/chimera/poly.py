@@ -2,7 +2,7 @@ import numpy as np
 import sympy as sp
 from sympy import Matrix, Basic
 from sympy.polys.polytools import Poly
-from sympy.polys.domains import QQ
+from sympy.polys.domains import QQ, EX
 from sympy.polys.matrices import DomainMatrix
 
 from .utils import is_col_reduced, get_lccm, get_leading_column_degrees
@@ -117,7 +117,7 @@ def row_hermite_form(A, x, domain=QQ):
     return H, Umat
 
 
-def echelon_form(A, x, domain=QQ, mode: str = "pre"):
+def echelon_form(A, x, domain=None, mode: str = "pre"):
     """
     Compute the row echelon form of a matrix
 
@@ -126,13 +126,18 @@ def echelon_form(A, x, domain=QQ, mode: str = "pre"):
     """
     M = A.copy()
     n, m = M.shape
+    if domain is None:
+        if M.free_symbols:
+            domain = EX
+        else:
+            domain = QQ
     R = domain.poly_ring(x)
 
     # Convert input to DomainMatrix over R
     if isinstance(M, DomainMatrix):
         P = M if M.domain == R else M.convert_to(R)
     else:
-        P = DomainMatrix.from_Matrix(M, gens=x).convert_to(R)
+        P = DomainMatrix.from_list(M.tolist(), domain=R).to_sparse()
 
     # Store transformation steps
     U = DomainMatrix.eye(n, R)

@@ -11,8 +11,12 @@ from chimera.utils import random_poly_mat
 
 
 def test_echelon_form():
-    s = sp.Symbol("s")
+    a, b, c, s = sp.symbols("a b c s")
     a_mat = random_poly_mat(3, 3, 3, -5, 5, s)
+    # add some symbols
+    a_mat[0, 0] += a
+    a_mat[1, 1] += b
+    a_mat[2, 2] += c
 
     print("Initial matrix:")
     sp.pprint(a_mat)
