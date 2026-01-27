@@ -11,7 +11,8 @@ from chimera.algos import (
     gplde,
     column_reduced_form,
     canonical_form,
-    move_col_degrees_on_diagonal, check_col_degrees_on_diagonal
+    move_col_degrees_on_diagonal,
+    check_col_degrees_on_diagonal,
 )
 from chimera.utils import (
     get_column_degrees,
@@ -124,13 +125,34 @@ def test_gplde():
             print("All good")
 
 
-@pytest.mark.skip("Takes too long")
+# @pytest.mark.skip("Takes too long")
 def test_reduce_matrix_shifts():
     # ode part
-    m = random_poly_mat(3, 3, 3, -5, 5, s)
-    m, _ = column_reduced_form(m, s)
-    d_mat, _ = move_col_degrees_on_diagonal(m, s)
-    print(d_mat)
+    if 0:
+        m = random_poly_mat(3, 3, 3, -5, 5, s)
+        m, _ = column_reduced_form(m, s)
+        d_mat, _ = move_col_degrees_on_diagonal(m, s)
+        print(d_mat)
+    else:
+        d_mat = sp.Matrix(
+            [
+                [
+                    -3 * s**2 + 4 * s - 3,
+                    5,
+                    -2 * s**3
+                    - 15 * s**2 / 2
+                    - 2 * s * (-3 * s**2 + 4 * s - 3) / 3
+                    + 5 * s
+                    + 2,
+                ],
+                [
+                    -3,
+                    -2 * s - 3,
+                    -(s**3) - s**2 * (-2 * s - 3) / 2 - 2 * s**2 - 2 * s - 2,
+                ],
+                [-2, 4, -2 * s**2 + 4 * s / 3 - 1],
+            ]
+        )
 
     tau_m = [sp.sqrt(2), sp.sqrt(5), sp.sqrt(7)]
     tau_p = [0, -sp.sqrt(3), -sp.sqrt(9)]
@@ -179,7 +201,7 @@ def test_reduce_matrix_shifts():
 
 
 def test_move_col_degrees_on_diagonal():
-    if 0:
+    if 1:
         rand_mat = random_poly_mat(3, 3, 3, -5, 5, s)
         mat, _ = column_reduced_form(rand_mat, s)
     else:
@@ -190,6 +212,6 @@ def test_move_col_degrees_on_diagonal():
                 [s**3 - 4 * s**2 + 3 * s + 3, 1, -5 * s**2 + 3 * s + 4],
             ]
         )
-    sp.pprint(mat)
-    m, r_mat = move_col_degrees_on_diagonal (mat, s)
+    # sp.pprint(mat)
+    m, r_mat = move_col_degrees_on_diagonal(mat, s)
     assert check_col_degrees_on_diagonal(m, s)

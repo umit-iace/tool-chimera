@@ -113,7 +113,7 @@ def bezouts(
     """
     a, b, h = gcdexs(p, q, s_gen)
     # print("Solutions for a, b and h:")
-    # display(a, b, h)
+    # print(a, b, h)
 
     # verify the solution
     sol = a * p + b * q - h
@@ -129,7 +129,7 @@ def bezouts(
     lcm_b = GenPoly(b, s_gen).get_coeff_denom_lcm()
     lcm = sp.lcm(lcm_a, lcm_b)
     # print("LCM of bezout coefficients:")
-    # display(lcm)
+    # print(lcm)
 
     at = a * lcm
     at = at.simplify()
@@ -138,7 +138,7 @@ def bezouts(
     ht = h * lcm
     ht = ht.simplify()
     # print("New coefficients a, b, h:")
-    # display(at, bt, ht)
+    # print(at, bt, ht)
 
     # verify the solution
     sol = at * p + bt * q - ht
@@ -154,7 +154,7 @@ def bezouts(
         n2, d2 = (q / ht).as_numer_denom()
 
         gcd = sp.gcd(d1, d2)
-        # display(gcd)
+        # print(gcd)
         pt = n1 * d2 / gcd
         pt = pt.simplify()
         qt = n2 * d1 / gcd
@@ -166,7 +166,7 @@ def bezouts(
         qt = q
 
     # print("New coefficients pt, qt ,ht:")
-    # display(pt, qt, ht)
+    # print(pt, qt, ht)
 
     # verify the solution
     sol = at * pt + bt * qt - ht
@@ -218,22 +218,20 @@ def bezouts(
 
             if 0:
                 # Test: b_s should not have a pole at r
-                display(b_s)
+                print(b_s)
                 bsn, bsd = b_s.subs(pred, sp.exp(s)).as_numer_denom()
-                display(bsn, bsd)
-                display(bsn.subs(s, r), bsd.subs(s, r))
+                print(bsn, bsd)
+                print(bsn.subs(s, r), bsd.subs(s, r))
                 assert bsn.subs(s, r) == bsd.subs(s, r) == 0
 
             if 0:
                 print("New coefficients as,bs and hs:")
-                display(a_s)
-                display(b_s)
-                display(h_s)
+                print(a_s, b_s, h_s)
                 break
 
-    # display(a_s)
-    # display(b_s)
-    # display(h_s)
+    # print(a_s)
+    # print(b_s)
+    # print(h_s)
     # print("Finished.")
 
     # verify the solution
@@ -631,38 +629,38 @@ def eliminate_delays(h_mat: sp.Matrix, del_mat: sp.Matrix, p_gen: sp.Symbol, s_g
     ht_mat, r_mat, ri_mat
     """
     # print("Step 0: Original matrices")
-    # display(h_mat)
-    # display(del_mat)
+    # print(h_mat)
+    # print(del_mat)
 
     # print("Step 1a: Echelon form")
     h1, r1i = echelon_form(h_mat, p_gen, mode="post")
-    # display(h1)
-    # display(r1i)
+    # print(h1)
+    # print(r1i)
 
     # print("Step 1b: Factor out delay matrix")
     h1p = factor_diag_post(del_mat @ h1, del_mat)
-    # display(h1p)
+    # print(h1p)
 
     # print("Step 2: Eliminate delays")
     h2, r2i = eliminate_delays_ur_post(h1p, p_gen, s_gen)
-    # display(h2)
-    # display(r2i)
+    # print(h2)
+    # print(r2i)
 
     # print("Step 3: Col reduced form")
     ht, r3i = column_reduced_form(h2, p_gen)
-    # display(ht)
-    # display(r3i)
+    # print(ht)
+    # print(r3i)
 
     # print("Result: Transform for y:")
     ri_mat = r1i @ del_mat.inv() @ r2i @ r3i
     r_mat = r3i.inv() @ r2i.inv() @ del_mat @ r1i.inv()
-    # display(r_mat)
+    # print(r_mat)
 
     # check consistency
     # print("Error:")
     err = del_mat @ h_mat - ht @ r_mat
     err = err.applyfunc(sp.simplify)
-    # display(err)
+    # print(err)
     assert err == sp.Matrix.zeros(*err.shape)
 
     return ht, r_mat, ri_mat
