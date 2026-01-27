@@ -2,13 +2,13 @@
 Custom algorithms for the project
 """
 
-from typing import Union, Tuple
+from typing import Union, Tuple, Any
 
 import sympy as sp
 
 from .poly import echelon_form, column_reduced_form
 from .genpoly import GenPoly
-from .utils import get_matrix_terms, get_leading_term_matrix, factor_diag_post
+from .utils import get_matrix_terms, get_leading_term_matrix, factor_diag_post, is_col_reduced
 
 __all__ = ["gpld", "make_entire", "gplde", "eliminate_delays"]
 
@@ -512,6 +512,59 @@ def reduce_matrix_shifts(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
     return gp_mat, l_mat
 
 
+def canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol) -> Tuple[sp.Matrix, sp.Matrix, sp.Matrix]:
+    """
+    Apply row and colum permutations to bring mat into canonical form
+    """
+    r_mat = move_col_degrees_on_diagonal(mat, p_gen)
+
+    c_mat = mat @ r_mat
+
+    l_mat = sp.eye(mat.rows)
+    c_mat = l_mat @ c_mat
+
+    return l_mat, c_mat, r_mat
+
+
+def move_col_degrees_on_diagonal(mat: MutableDenseMatrix, p_gen: Symbol) -> Tuple[sp.Matrix, sp.Matrix]:
+    """
+    Compute a permutation that moves the highest derivatives from each column on the main diagonal
+    """
+    # extract column degrees
+    cffs, degs = get_leading_term_matrix(mat, p_gen)
+    c_degs = [max(degs[:, c]) for c in range(degs.cols)]
+
+    # check compatibilities
+    r_compat = [set() for c in range(degs.cols)]
+    for r in range(degs.rows):
+        for c in range(degs.cols):
+            if degs[r, c] == c_degs[c]:
+                r_compat[c].add(r)
+    if any([not s for s in r_compat]):
+        raise ValueError("Properties not obtainable by reordering, Matrix is probably not column reduced.")
+
+    # sort entries first that only fit a few rows
+    col_compat = list(zip(list(range(degs.cols)), r_compat))
+    col_compat.sort(key=lambda x: len(x[1]))
+
+    # select columns
+    new_cols = [None] * mat.cols
+    for r in range(mat.rows):
+        for idx, (c, adm_rs) in enumerate(col_compat):
+            if r in adm_rs:
+                new_cols[r] = c
+                break
+        else:
+            raise ValueError
+        col_compat.pop(idx)
+
+    # build permutation matrix
+    perm = sp.combinatorics.Permutation(new_cols)
+    r_mat = sp.PermutationMatrix(perm).as_explicit().T
+
+    return mat @ r_mat, r_mat
+
+
 def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
     """
     Check if a matrix m is in canonical form, thus if the highest derivative degrees
@@ -519,17 +572,12 @@ def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
     diameters are increasing from top to bottom in each column.
     """
     # 1: highest derivatives on the main diagonal
-    cffs, degs = get_leading_term_matrix(mat, p_gen)
-    for j in range(degs.shape[1]):
-        if degs[j, j] != max(degs[:, j]):
-            raise ValueError(
-                f"Given matrix does not have highest degrees w.r.t {p_gen} on the main diagonal "
-                f"in column {j}."
-            )
-    # 2: highest predictions and shift degrees increasing
+    check_col_degrees_on_diagonal(mat, p_gen)
+
+    # 2: highest predictions and shift degrees increasing rowwise
     (l_cffs, l_degs), (t_cffs, t_degs) = get_matrix_terms(mat, gp_gen)
     c_degs = l_degs - t_degs
-    for j in range(degs.shape[1]):
+    for j in range(mat.shape[1]):
         if l_degs[j, j] != min(l_degs[j:, j]):
             raise ValueError(
                 f"Given matrix does not exhibit increasing predictions in column {j}."
@@ -538,6 +586,17 @@ def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
             raise ValueError(
                 f"Given matrix does not exhibit increasing shift intervals in column {j}."
             )
+
+
+def check_col_degrees_on_diagonal(mat: MutableDenseMatrix, p_gen: Symbol) -> Any:
+    cffs, degs = get_leading_term_matrix(mat, p_gen)
+    for j in range(degs.shape[1]):
+        if degs[j, j] != max(degs[:, j]):
+            raise ValueError(
+                f"Given matrix does not have highest degrees w.r.t {p_gen} on the main diagonal "
+                f"in column {j}."
+            )
+    return True
 
 
 def eliminate_delays_ur_post(mat: sp.Matrix, p_gen: sp.Symbol, s_gen: sp.Symbol) -> Tuple[sp.Matrix, sp.Matrix]:

@@ -6,6 +6,8 @@ from chimera.poly import (
     is_in_row_hermite_form,
     echelon_form,
     is_in_echelon_form,
+    column_reduced_form,
+    is_col_reduced,
 )
 from chimera.utils import random_poly_mat
 
@@ -111,3 +113,17 @@ def test_is_in_row_hermite_form():
     # Not HNF: above-pivot entry has degree >= pivot degree
     C = sp.Matrix([[0, x**2], [0, x]])
     assert is_in_row_hermite_form(C, x) == False
+
+
+def test_column_reduced_form():
+    s = sp.Symbol("s")
+    mat = sp.Matrix(
+        [
+            [-5, 2 - 3 * s, -1],
+            [4 * s**2 - 4 * s - 5, -4 * s**2 - 5 * s + 5, -4 * s - 5],
+            [-1, -3 * s**3 + 3 * s**2 - 4 * s + 5, -5],
+        ]
+    )
+    assert not is_col_reduced(mat, s)
+    red, r = column_reduced_form(mat, s)
+    assert is_col_reduced(red, s)

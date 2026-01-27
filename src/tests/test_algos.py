@@ -4,12 +4,21 @@ import sympy as sp
 import pytest
 
 from chimera import GenPoly
-from chimera.algos import reduce_matrix_shifts, gpld, make_entire, gplde
+from chimera.algos import (
+    reduce_matrix_shifts,
+    gpld,
+    make_entire,
+    gplde,
+    column_reduced_form,
+    canonical_form,
+    move_col_degrees_on_diagonal, check_col_degrees_on_diagonal
+)
 from chimera.utils import (
     get_column_degrees,
     get_lccm,
     check_singularities,
     is_col_reduced,
+    random_poly_mat,
 )
 
 # generators
@@ -117,17 +126,12 @@ def test_gplde():
 
 @pytest.mark.skip("Takes too long")
 def test_reduce_matrix_shifts():
-    a = 4 * s**2 + 2 * s + 7
-    b = 1 * s - 10
-    c = 17
-    d_mat = sp.Matrix(
-        [
-            [a, b, c],
-            [c, a, b],
-            [b, c, a],
-        ]
-    )
-    assert is_col_reduced(d_mat, s)
+    # ode part
+    m = random_poly_mat(3, 3, 3, -5, 5, s)
+    m, _ = column_reduced_form(m, s)
+    d_mat, _ = move_col_degrees_on_diagonal(m, s)
+    print(d_mat)
+
     tau_m = [sp.sqrt(2), sp.sqrt(5), sp.sqrt(7)]
     tau_p = [0, -sp.sqrt(3), -sp.sqrt(9)]
 
@@ -172,3 +176,20 @@ def test_reduce_matrix_shifts():
     assert lcmes == lcmse
     # assert check_derivative_condition(mrg, s)
     # assert check_prediction_condition(mrg, sigma)
+
+
+def test_move_col_degrees_on_diagonal():
+    if 0:
+        rand_mat = random_poly_mat(3, 3, 3, -5, 5, s)
+        mat, _ = column_reduced_form(rand_mat, s)
+    else:
+        mat = sp.Matrix(
+            [
+                [2 - 3 * s**2, 1, -5 * s**2 - 5],
+                [s**3 - s**2 - 5 * s + 5, -3 * s**2 + s - 1, 3 * s**2 - s - 5],
+                [s**3 - 4 * s**2 + 3 * s + 3, 1, -5 * s**2 + 3 * s + 4],
+            ]
+        )
+    sp.pprint(mat)
+    m, r_mat = move_col_degrees_on_diagonal (mat, s)
+    assert check_col_degrees_on_diagonal(m, s)
