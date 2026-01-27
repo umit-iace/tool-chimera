@@ -416,76 +416,51 @@ def column_reduced_form(
 
     Returns: Tuple(S, U)
     """
-    u = sp.eye(mat.shape[0])
+    u = sp.eye(mat.cols)
     m = mat.copy()
-    n = 0
     while not is_col_reduced(m, sym):
-        # display(m)
-        if debug:
-            print(f"Iteration {n}")
-            # display(m)
         # sort into decreasing column degrees
         cds = get_leading_column_degrees(m, sym)
-        # display(cds)
         if sorted(cds, reverse=True) != cds:
-            # print("Permutating")
             s_idxs = np.argsort(cds).tolist()[::-1]
             perm = sp.combinatorics.Permutation(s_idxs)
             p = sp.PermutationMatrix(perm).as_explicit().T
-            # display(p)
             m = m @ p
             u = u @ p
-            # display(m)
 
         # select pivot column index k
         mh = get_lccm(m, sym)
         cds = get_leading_column_degrees(m, sym)
-
-        # display(mh)
-        # display(cds)
-        for k in range(m.shape[1]):
-            # print(f"Testing k={k}")
-            lc = False
-
-            for q in range(k + 1, m.shape[1]):
-                # check if mh[k] can be expressed as linear combination
-                # of columns mh[k:]
-                # print(f"Testing colums {k+1} to {q}")
-
+        cfs = None
+        for k in range(m.cols):
+            # check if mh[k] can be expressed as linear combination of columns mh[k+1:]
+            for q in range(1, m.cols-k):
+                # create some coefficients
+                cs = sp.symbols(f"c_{k + 1}:{k + 1 + q}")
+                # pad them for the first k columns and the remaining ones
+                csp = (tuple(0 for n in range(k + 1))
+                       + cs
+                       + tuple(0 for n in range(k +1 +q, m.cols)))
+                expr = mh[:, k] - sp.Add(*[c * mh[:, idx] for idx, c in enumerate(csp)])
                 # compute basis coefficients
-                cs = sp.symbols(f"c_{k + 2}:{q - k + 2}")
-                # display(cs)
-                # pad them for the first k columns
-                csp = tuple(0 for n in range(k + 1)) + cs
-                expr = mh[:, k] - sp.Add(
-                    *[csp[i] * mh[:, i] for i in range(k + 1, q + 1)]
-                )
-                # display(expr)
-                cfs = sp.solve(expr, cs)
-                # display(cfs)
-                if cfs:
-                    lc = True
-                    # print("Found a linear combination")
+                sol = sp.solve(expr, cs)
+                if sol:
+                    sol[0] = 0
+                    cfs = [sol[c] for c in csp]
                     break
-
-            if lc:
+            if cfs is not None:
                 break
 
         # eliminate kth column from mh
-        r = sp.Matrix.zeros(*m.shape)
+        r = sp.Matrix.eye(m.cols)
         for i in range(r.rows):
-            for j in range(r.cols):
-                if i == j:
-                    r[i, j] = 1
-                elif i > k and i <= q and j == k:
-                    r[i, j] = -cfs[csp[i - k]] * sym ** (cds[k] - cds[i])
-                else:
-                    r[i, j] = 0
-        # display(r)
+            if i == k:
+                continue
+            r[i, k] = -cfs[i] * sym ** (cds[k] - cds[i])
         m = m @ r
-        m.expand()
         m.simplify()
+
+        # remember the operations
         u = u @ r
-        n = n + 1
 
     return m, u
