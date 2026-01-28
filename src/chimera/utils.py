@@ -175,10 +175,11 @@ def get_term(
         tc = _np.EC() / _dp.EC()
         tdn = sp.Poly(_np.EM(), _np.gens).degree()
         tdd = sp.Poly(_dp.EM(), _dp.gens).degree()
-        if tdn == tdd == sp.S.NegativeInfinity:
-            td = 0
-        else:
-            td = tdn -tdd
+        if tdn == sp.S.NegativeInfinity:
+            tdn = 0
+        if tdd == sp.S.NegativeInfinity:
+            tdd = 0
+        td = tdn - tdd
         return (lc, ld), (tc, td)
 
     def _handle_coefficients(_p, sym):
@@ -194,7 +195,7 @@ def get_term(
                 tc = _tc
         return (lc, ld), (tc, td)
 
-    # maybe it is a generalized polynomial?
+    # maybe it is a generalised polynomial?
     if isinstance(e, GenPoly):
         if e.gen == sym:
             return _handle_gpoly(e)
