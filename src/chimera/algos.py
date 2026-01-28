@@ -8,7 +8,12 @@ import sympy as sp
 
 from .poly import echelon_form, column_reduced_form
 from .genpoly import GenPoly
-from .utils import get_matrix_terms, get_leading_term_matrix, factor_diag_post, is_col_reduced
+from .utils import (
+    get_matrix_terms,
+    get_leading_term_matrix,
+    factor_diag_post,
+    is_col_reduced,
+)
 
 __all__ = ["gpld", "make_entire", "gplde", "eliminate_delays"]
 
@@ -217,14 +222,6 @@ def bezouts(
                 h_s = h_s.simplify()
 
             if 0:
-                # Test: b_s should not have a pole at r
-                print(b_s)
-                bsn, bsd = b_s.subs(pred, sp.exp(s)).as_numer_denom()
-                print(bsn, bsd)
-                print(bsn.subs(s, r), bsd.subs(s, r))
-                assert bsn.subs(s, r) == bsd.subs(s, r) == 0
-
-            if 0:
                 print("New coefficients as,bs and hs:")
                 print(a_s, b_s, h_s)
                 break
@@ -403,7 +400,7 @@ def make_entire(
     gen_expr: sp.Expr = None,
 ) -> GenPoly:
     """
-    Convert a generalized polynomial in *sig_gen* with rational coefficients
+    Convert a generalised polynomial in *sig_gen* with rational coefficients
     in *sym* into a version without singularities
 
     As the result is a whole function it can therefore be interpreted as the
@@ -428,7 +425,7 @@ def make_entire(
     # extract the common denominator
     num, den = expr.as_numer_denom()
 
-    # factorize the denominator, extract leading coefficient for normalization
+    # factorise the denominator, extract leading coefficient for normalisation
     p_den = sp.Poly(den, rat_sym)
     lc = p_den.LC()
     rts = sp.roots(p_den, rat_sym)
@@ -504,27 +501,52 @@ def reduce_matrix_shifts(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
             lc = get_column_reduction_transform(gp_mat, j, p_gen, gp_gen)
             gp_mat = lc @ gp_mat
             l_mat = lc @ l_mat
-            # gp_mat = (lc @ gp_mat).applyfunc(lambda x: GenPoly(x, gp_gen))
+            if 0:
+                # gp_mat = gp_mat.applyfunc(sp.simplify)
+                gp_mat = gp_mat.applyfunc(lambda x: GenPoly(x, gp_gen))
+                # gp_mat = gp_mat.applyfunc(lambda x: GenPoly(x, gp_gen).as_expr())
             # l_mat = (lc @ l_mat).applyfunc(lambda x: GenPoly(x, gp_gen))
 
     return gp_mat, l_mat
 
 
-def canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol) -> Tuple[sp.Matrix, sp.Matrix, sp.Matrix]:
+def canonical_form(
+    mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol
+) -> Tuple[sp.Matrix, sp.Matrix, sp.Matrix]:
     """
     Apply row and colum permutations to bring mat into canonical form
     """
-    r_mat = move_col_degrees_on_diagonal(mat, p_gen)
-
-    c_mat = mat @ r_mat
-
-    l_mat = sp.eye(mat.rows)
-    c_mat = l_mat @ c_mat
-
-    return l_mat, c_mat, r_mat
+    m, l_mat = sort_shift_intervals(mat, gp_gen)
+    m, r_mat = move_col_degrees_on_diagonal(m, p_gen)
+    return l_mat, m, r_mat
 
 
-def move_col_degrees_on_diagonal(mat: MutableDenseMatrix, p_gen: Symbol) -> Tuple[sp.Matrix, sp.Matrix]:
+def sort_shift_intervals(
+        mat: sp.Matrix, gp_gen: sp.Symbol
+) -> Tuple[sp.Matrix, sp.Matrix]:
+    """
+    Compute a permutation that sorts the leading row degrees w.r.t shifts ascendingly
+    """
+    # extract row degrees
+    (_, ld), (_, td) = get_matrix_terms(mat, gp_gen)
+    cd = ld - td
+    r_degs = [max(cd[r, :]) for r in range(cd.rows)]
+
+    # sort them
+    r_pair = list(enumerate(r_degs))
+    r_pair.sort(key=lambda x: x[1])
+    r_order, _ = zip(*r_pair)
+
+    # build permutation matrix
+    perm = sp.combinatorics.Permutation(r_order)
+    l_mat = sp.PermutationMatrix(perm).as_explicit()
+
+    return l_mat @ mat, l_mat
+
+
+def move_col_degrees_on_diagonal(
+    mat: sp.Matrix, p_gen: sp.Symbol
+) -> Tuple[sp.Matrix, sp.Matrix]:
     """
     Compute a permutation that moves the highest derivatives from each column on the main diagonal
     """
@@ -539,7 +561,9 @@ def move_col_degrees_on_diagonal(mat: MutableDenseMatrix, p_gen: Symbol) -> Tupl
             if degs[r, c] == c_degs[c]:
                 r_compat[c].add(r)
     if any([not s for s in r_compat]):
-        raise ValueError("Properties not obtainable by reordering, Matrix is probably not column reduced.")
+        raise ValueError(
+            "Properties not obtainable by reordering, Matrix is probably not column reduced."
+        )
 
     # sort entries first that only fit a few rows
     col_compat = list(zip(list(range(degs.cols)), r_compat))
@@ -565,28 +589,31 @@ def move_col_degrees_on_diagonal(mat: MutableDenseMatrix, p_gen: Symbol) -> Tupl
 
 def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
     """
-    Check if a matrix m is in canonical form, thus if the highest derivative degrees
-    occur in the main diagonal elements and that the predictions and overall shifts interval
-    diameters are increasing from top to bottom in each column.
+    Check if a matrix m is in canonical form
+
+    This includes two checks:
+    - the highest derivative degrees in each column must occur on the main diagonal
+    - the shift diameters are increasing for each row
     """
     # 1: highest derivatives on the main diagonal
     check_col_degrees_on_diagonal(mat, p_gen)
 
-    # 2: highest predictions and shift degrees increasing rowwise
+    # 2: shift degrees are increasing row-wise
     (l_cffs, l_degs), (t_cffs, t_degs) = get_matrix_terms(mat, gp_gen)
     c_degs = l_degs - t_degs
-    for j in range(mat.shape[1]):
-        if l_degs[j, j] != min(l_degs[j:, j]):
+    for j in range(mat.rows - 1):
+        diff = c_degs[j + 1, :] - c_degs[j, :]
+        if not all(diff[0] == d for d in diff):
             raise ValueError(
-                f"Given matrix does not exhibit increasing predictions in column {j}."
+                f"Given matrix does not exhibit the same shift differences for all columns between row {j} and {j + 1}."
             )
-        if c_degs[j, j] != min(c_degs[j:, j]):
+        if diff[0] < 0:
             raise ValueError(
-                f"Given matrix does not exhibit increasing shift intervals in column {j}."
+                f"Given matrix does not exhibit increasing shift intervals in between row {j} and {j + 1}."
             )
 
 
-def check_col_degrees_on_diagonal(mat: MutableDenseMatrix, p_gen: Symbol) -> Any:
+def check_col_degrees_on_diagonal(mat: sp.Matrix, p_gen: sp.Symbol) -> Any:
     cffs, degs = get_leading_term_matrix(mat, p_gen)
     for j in range(degs.shape[1]):
         if degs[j, j] != max(degs[:, j]):
@@ -597,15 +624,17 @@ def check_col_degrees_on_diagonal(mat: MutableDenseMatrix, p_gen: Symbol) -> Any
     return True
 
 
-def eliminate_delays_ur_post(mat: sp.Matrix, p_gen: sp.Symbol, s_gen: sp.Symbol) -> Tuple[sp.Matrix, sp.Matrix]:
+def eliminate_delays_ur_post(
+    mat: sp.Matrix, p_gen: sp.Symbol, s_gen: sp.Symbol
+) -> Tuple[sp.Matrix, sp.Matrix]:
     """
     Eliminate all delays right of the main diagonal
     """
     r_mat = sp.Matrix.eye(mat.shape[1])
     for r in range(mat.shape[0]):
-        pivot = GenPoly(mat[r,r], s_gen)
-        for c in range(r+1, mat.shape[1]):
-            elem = GenPoly(mat[r,c], s_gen)
+        pivot = GenPoly(mat[r, r], s_gen)
+        for c in range(r + 1, mat.shape[1]):
+            elem = GenPoly(mat[r, c], s_gen)
             quo, rem = gplde(elem, pivot, p_gen)
             r_mat[r, c] = -quo.as_expr()
     res = mat @ r_mat
@@ -613,7 +642,9 @@ def eliminate_delays_ur_post(mat: sp.Matrix, p_gen: sp.Symbol, s_gen: sp.Symbol)
     return res, r_mat
 
 
-def eliminate_delays(h_mat: sp.Matrix, del_mat: sp.Matrix, p_gen: sp.Symbol, s_gen: sp.Symbol) -> Tuple[sp.Matrix, sp.Matrix, sp.Matrix]:
+def eliminate_delays(
+    h_mat: sp.Matrix, del_mat: sp.Matrix, p_gen: sp.Symbol, s_gen: sp.Symbol
+) -> Tuple[sp.Matrix, sp.Matrix, sp.Matrix]:
     """
     Compute transformation that will eliminate all delays in a given system
 
