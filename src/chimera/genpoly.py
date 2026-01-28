@@ -270,32 +270,36 @@ class GenPoly(sp.Basic):
             term = term.expand(power_exp=False).collect(gen**w).collect(gen)
             for factor in sp.Mul.make_args(term):
                 factor = factor.collect(gen**w).collect(gen)
-                if not factor.has_free(gen):
-                    coeff.append(factor)
-                else:
-                    p_base, p_exp = decompose_power_rat(factor)
-                    if p_base != gen:
-                        if isinstance(p_base, sp.Pow) and p_base.args[0] == gen:
-                            # push symbol from the base into the exponent
-                            p_exp *= p_base.args[1]
-                        elif isinstance(p_base, sp.Mul) and p_base.args[0] == gen:
-                            # power of one found, use remaining factors for coeff
-                            p_exp *= 1
-                            coeff.append(p_base.args[1])
-                        else:
-                            error = ValueError(
-                                f"The computed base {p_base} does not match the generator {gen}"
-                            )
-                            raise error
-                    if p_exp not in exp:
-                        exp.append(p_exp)
+                for sub_factor in sp.Mul.make_args(factor):
+                    if not sub_factor.has_free(gen):
+                        coeff.append(sub_factor)
+                    else:
+                        p_base, p_exp = sub_factor.as_base_exp()
+                        if p_base != gen:
+                            if isinstance(p_base, sp.Pow) and p_base.args[0] == gen:
+                                # push symbol from the base into the exponent
+                                p_exp *= p_base.args[1]
+                            elif isinstance(p_base, sp.Mul) and p_base.args[0] == gen:
+                                # power of one found, use remaining factors for coeff
+                                p_exp *= 1
+                                coeff.append(p_base.args[1])
+                            else:
+                                error = ValueError(
+                                    f"The computed base {p_base} does not match the generator {gen}"
+                                )
+                                raise error
+                        if p_exp not in exp:
+                            exp.append(p_exp)
             e = sp.Add(*exp)
             c = sp.Mul(*coeff)
+            assert gen not in c.free_symbols
             if e in e_c_map:
                 e_c_map[e] += c
             else:
                 e_c_map[e] = c
-        return e_c_map
+
+        red_map = {e: c.simplify() for e,c in e_c_map.items()}
+        return red_map
 
     def as_expr(self) -> sp.Expr:
         return self.dict_to_expr(self.rep, self.gen)
