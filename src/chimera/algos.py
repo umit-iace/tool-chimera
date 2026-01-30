@@ -433,9 +433,18 @@ def make_entire(
     # start without denominator and iteratively add zeroes
     entire_gpoly = GenPoly(num / lc, gen_expr)
     for r, m in rts.items():
+        print(f"Root: {r}")
+        gp_ds = [entire_gpoly.as_expr()]
         for k in range(m):
-            gp_at_r = sp.limit(entire_gpoly.as_expr(), rat_sym, r)
+            print(f"Number {k}")
+            if 0:
+                gp_at_r = sp.limit(gp_ds[k], rat_sym, r) / sp.factorial(k)
+            else:
+                # normally this would suffice but somehow it keeps failing
+                gp_at_r = gp_ds[k].subs(rat_sym, r) / sp.factorial(k)
             entire_gpoly = (entire_gpoly - gp_at_r) / (rat_sym - r)
+            if k < m-1:
+                gp_ds.append(gp_ds[-1].diff(rat_sym))
 
     # add offset term to original expression
     p = entire_gpoly.as_dict().get(0, sp.S.Zero)
