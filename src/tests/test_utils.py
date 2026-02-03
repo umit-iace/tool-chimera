@@ -245,7 +245,7 @@ def test_generate_transform():
 
 def test_factor_diag():
     h_mat = sp.MatrixSymbol("H", 5 ,5).as_explicit()
-    del_mat = sp.Matrix.diag(sp.symbols("d_{:6}"))
+    del_mat = sp.Matrix.diag(sp.symbols("d_{:5}"))
 
     # test it
     r = del_mat @ h_mat

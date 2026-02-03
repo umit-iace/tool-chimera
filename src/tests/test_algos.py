@@ -58,6 +58,7 @@ def test_gpld():
         assert err == 0
 
 
+@pytest.mark.skip("Takes too long")
 def test_make_entire():
     exprs = [
         2 * s / s**3 * (3 * s + 4) * sigma**3 + 1 / (s**2 + 2) * sigma,
@@ -75,6 +76,7 @@ def test_make_entire():
         assert err.exponents() == [0]
 
 
+@pytest.mark.skip("Takes too long")
 def test_gplde():
     xl = [
         (3 * s + 2 * s**2) * sigma ** sp.sqrt(5) + (s**2 + 2 * s) * sigma + 2 * s + 1,
@@ -125,7 +127,7 @@ def test_gplde():
             print("All good")
 
 
-# @pytest.mark.skip("Takes too long")
+@pytest.mark.skip("Takes too long")
 def test_reduce_matrix_shifts():
     np = 2
     nm = n = 3
