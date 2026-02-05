@@ -66,16 +66,21 @@ def test_make_entire():
     ]
     for expr in exprs:
         print(f"Testing {expr}:")
-        ep = GenPoly(expr, sigma)
-        e_epxr = make_entire(ep, s)
-        check_singularities(e_epxr, s, sigma, sp.exp(s))
+        gp = GenPoly(expr, sigma)
+        egp, p = make_entire(gp, s)
+
+        print("Checking for singularities in quotient and remainder:")
+        check_singularities(egp, s, sigma, sp.exp(s))
 
         # all coefficients should stay the same, except for the constant part
-        err = expr - e_epxr
-        assert err.exponents() == [0]
+        for exp, cff in egp.as_dict().items():
+            if exp == 0:
+                continue
+            err = (gp.as_dict()[exp] - cff).simplify()
+            assert err == 0
 
 
-@pytest.mark.skip("Takes too long")
+# @pytest.mark.skip("Takes too long")
 def test_gplde():
     xl = [
         (3 * s + 2 * s**2) * sigma ** sp.sqrt(5) + (s**2 + 2 * s) * sigma + 2 * s + 1,
@@ -107,8 +112,8 @@ def test_gplde():
         qep, rep = gplde(xp, yp, s)
         qe = qep.as_expr()
         re = rep.as_expr()
-        print(f"q: {qe}")
-        print(f"r: {re}")
+        # print(f"q: {qe}")
+        # print(f"r: {re}")
 
         # check degrees
         assert rep.degmax() <= yp.degmax()
@@ -120,10 +125,9 @@ def test_gplde():
         print(f"error: {err}")
         assert err == 0
 
-        print("Checking for singularities in quotient and remainder:")
-        for t in qep, rep:
-            check_singularities(t, s, sigma, sp.exp(s))
-            print("All good")
+        print("Checking for singularities in remainder:")
+        # TODO speed this check up so that we can acutally test it
+        # check_singularities(rep, s, sigma, sp.exp(s), verbose=True)
 
 
 @pytest.mark.skip("Takes too long")

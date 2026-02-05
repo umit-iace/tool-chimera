@@ -398,6 +398,7 @@ def make_entire(
     expr: GenPoly,
     rat_sym: sp.Symbol,
     gen_expr: sp.Expr = None,
+    verbose: bool = False,
 ) -> GenPoly:
     """
     Convert a generalised polynomial in *sig_gen* with rational coefficients
@@ -412,7 +413,8 @@ def make_entire(
         gen_expr (sp.Expr): Expression in sym, that will be substituted for *gp_gen*
 
     Returns:
-        GenPoly: The resulting expression without singularities (entire function in rat_sym)
+        GenPoly, Expr: Tuple of the resulting expression without singularities (entire function in rat_sym)
+        as well as the correcting factor.
     """
     if gen_expr is None:
         gen_expr = sp.exp(rat_sym)
@@ -433,25 +435,27 @@ def make_entire(
     # start without denominator and iteratively add zeroes
     egp = GenPoly(num / lc, gen_expr)
     for r, m in rts.items():
-        print(f"Root: {r} with multiplicity {m}")
+        if verbose:
+            print(f"Lifting root at {rat_sym}={r} with multiplicity {m}")
 
         # compute derivatives
         egp_k_ds = [egp.as_expr()]
         for i in range(1, m):
             egp_k_ds.append(egp_k_ds[-1].diff(rat_sym))
 
-        # include multiple roots in one step
+        # compute the limit at s = r
         egp_at_r = sp.Add(
             *[
                 egp_k_ds[i].subs(rat_sym, r) * (rat_sym - r) ** i / sp.factorial(i)
                 for i in range(m)
             ]
         )
+        # include multiple roots in one step
         egp = (egp - egp_at_r) / (rat_sym - r) ** m
 
     # add offset term to original expression
     p = egp.as_dict().get(0, sp.S.Zero)
-    return expr + p
+    return expr + p, p
 
 
 def gplde(
@@ -481,8 +485,7 @@ def gplde(
     q, r = gpld(x, y, verbose)
     if q.is_zero:
         return q, r
-    qe = make_entire(q, c_gen)
-    p = qe.as_dict().get(0, sp.S.Zero)
+    qe, p = make_entire(q, c_gen)
     re = r - p * y
     return qe, re
 
