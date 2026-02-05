@@ -130,10 +130,9 @@ def test_gplde():
         # check_singularities(rep, s, sigma, sp.exp(s), verbose=True)
 
 
-@pytest.mark.skip("Takes too long")
 def test_reduce_matrix_shifts():
+    nm = n = 2
     np = 2
-    nm = n = 3
     rand = False
 
     # ode part
