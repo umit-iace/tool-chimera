@@ -58,7 +58,6 @@ def test_gpld():
         assert err == 0
 
 
-@pytest.mark.skip("Takes too long")
 def test_make_entire():
     exprs = [
         2 * s / s**3 * (3 * s + 4) * sigma**3 + 1 / (s**2 + 2) * sigma,

@@ -431,23 +431,26 @@ def make_entire(
     rts = sp.roots(p_den, rat_sym)
 
     # start without denominator and iteratively add zeroes
-    entire_gpoly = GenPoly(num / lc, gen_expr)
+    egp = GenPoly(num / lc, gen_expr)
     for r, m in rts.items():
-        print(f"Root: {r}")
-        gp_ds = [entire_gpoly.as_expr()]
-        for k in range(m):
-            print(f"Number {k}")
-            if 0:
-                gp_at_r = sp.limit(gp_ds[k], rat_sym, r) / sp.factorial(k)
-            else:
-                # normally this would suffice but somehow it keeps failing
-                gp_at_r = gp_ds[k].subs(rat_sym, r) / sp.factorial(k)
-            entire_gpoly = (entire_gpoly - gp_at_r) / (rat_sym - r)
-            if k < m-1:
-                gp_ds.append(gp_ds[-1].diff(rat_sym))
+        print(f"Root: {r} with multiplicity {m}")
+
+        # compute derivatives
+        egp_k_ds = [egp.as_expr()]
+        for i in range(1, m):
+            egp_k_ds.append(egp_k_ds[-1].diff(rat_sym))
+
+        # include multiple roots in one step
+        egp_at_r = sp.Add(
+            *[
+                egp_k_ds[i].subs(rat_sym, r) * (rat_sym - r) ** i / sp.factorial(i)
+                for i in range(m)
+            ]
+        )
+        egp = (egp - egp_at_r) / (rat_sym - r) ** m
 
     # add offset term to original expression
-    p = entire_gpoly.as_dict().get(0, sp.S.Zero)
+    p = egp.as_dict().get(0, sp.S.Zero)
     return expr + p
 
 
@@ -531,7 +534,7 @@ def canonical_form(
 
 
 def sort_shift_intervals(
-        mat: sp.Matrix, gp_gen: sp.Symbol
+    mat: sp.Matrix, gp_gen: sp.Symbol
 ) -> Tuple[sp.Matrix, sp.Matrix]:
     """
     Compute a permutation that sorts the leading row degrees w.r.t shifts ascendingly
