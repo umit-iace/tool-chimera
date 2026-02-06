@@ -1,9 +1,10 @@
 import numpy as np
 import sympy as sp
-from sympy import Matrix, Basic
-from sympy.polys.polytools import Poly
+from sympy import Matrix, Basic, poly
 from sympy.polys.domains import QQ, EX
 from sympy.polys.matrices import DomainMatrix
+from sympy.polys.polytools import Poly
+
 
 from .utils import is_col_reduced, get_lccm, get_leading_column_degrees
 
@@ -416,8 +417,9 @@ def column_reduced_form(
 
     Returns: Tuple(S, U)
     """
-    u = sp.eye(mat.cols)
     m = mat.copy()
+    u = sp.Matrix.eye(m.shape[1])
+    # u = m.eye(m.shape[1], m.domain)
     while not is_col_reduced(m, sym):
         # sort into decreasing column degrees
         cds = get_leading_column_degrees(m, sym)
@@ -432,15 +434,17 @@ def column_reduced_form(
         mh = get_lccm(m, sym)
         cds = get_leading_column_degrees(m, sym)
         cfs = None
-        for k in range(m.cols):
+        for k in range(m.shape[1]):
             # check if mh[k] can be expressed as linear combination of columns mh[k+1:]
-            for q in range(1, m.cols-k):
+            for q in range(1, m.shape[1] - k):
                 # create some coefficients
                 cs = sp.symbols(f"c_{k + 1}:{k + 1 + q}")
                 # pad them for the first k columns and the remaining ones
-                csp = (tuple(0 for n in range(k + 1))
-                       + cs
-                       + tuple(0 for n in range(k +1 +q, m.cols)))
+                csp = (
+                    tuple(0 for n in range(k + 1))
+                    + cs
+                    + tuple(0 for n in range(k + 1 + q, m.shape[1]))
+                )
                 expr = mh[:, k] - sp.Add(*[c * mh[:, idx] for idx, c in enumerate(csp)])
                 # compute basis coefficients
                 sol = sp.solve(expr, cs)
@@ -452,11 +456,18 @@ def column_reduced_form(
                 break
 
         # eliminate kth column from mh
-        r = sp.Matrix.eye(m.cols)
-        for i in range(r.rows):
-            if i == k:
-                continue
-            r[i, k] = -cfs[i] * sym ** (cds[k] - cds[i])
+        rd = {}
+        for i in range(m.shape[1]):
+            rd[i,i] = 1
+            if i != k:
+                if 0:
+                    monom = {cds[k] - cds[i]: -cfs[i]}
+                    poly = m.domain.from_dict(monom)
+                    rd[i,k] = poly
+                else:
+                    rd[i,k] = -cfs[i] * sym ** (cds[k] - cds[i])
+        r = sp.Matrix.from_dok(m.shape[1], m.shape[1], rd)
+        # r = DomainMatrix.from_dod(rd, (m.shape[1], m.shape[1]), m.domain)
         m = m @ r
         m.simplify()
 
