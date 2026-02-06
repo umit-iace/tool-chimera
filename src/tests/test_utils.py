@@ -1,6 +1,10 @@
-import numpy as np
 import pytest
+import numpy as np
 import sympy as sp
+from sympy.polys.fields import FracElement
+from sympy.polys.matrices import DomainMatrix
+from sympy.polys.rings import PolyElement
+from sympy.polys.domains import EX
 
 from chimera import GenPoly
 from chimera.utils import (
@@ -14,28 +18,37 @@ from chimera.utils import (
     is_col_reduced, factor_diag_pre, factor_diag_post,
 )
 from chimera.poly import column_reduced_form
+from chimera.genpoly import construct_fraction_field
 
+
+def check_dicts(d1, d2):
+    for k, v in d1.items():
+        assert k in d2
+        v2 = d2[k]
+        if isinstance(v2, (PolyElement, FracElement)):
+            v2 = v2.as_expr()
+        assert v - v2 == 0
 
 def test_get_coeff():
     a, b, s = sp.symbols("a b s")
     sigma = sp.symbols("sigma", positive=True)
 
-    sig_dict = {a: 4 * s + 2, b: 3 * s, -2 * a: 5 * s**2, b + b: 3 * s}
-    f = GenPoly.from_dict(sig_dict, sigma).as_expr()
+    sig_dict = {a: 4 * s + 2, b: 3 * s, -2 * a: 5 * s**2, 2 * b: 3 * s}
+    f = GenPoly.from_dict(sig_dict, sigma, s).as_expr()
     c = get_coeffs(f, sigma)
-    assert sig_dict == c
+    check_dicts(sig_dict, c)
 
     f = sigma ** (a) + 5 * s * sigma ** (-a)
-    assert get_coeffs(f, sigma) == {a: 1, -a: 5 * s}
+    check_dicts(get_coeffs(f, sigma), {a: 1, -a: 5 * s})
 
     f = (1 / sigma) ** (a) + 5 * s * (1 / sigma) ** (-a)
-    assert get_coeffs(f, sigma) == {-a: 1, a: 5 * s}
+    check_dicts(get_coeffs(f, sigma), {-a: 1, a: 5 * s})
 
     f = (sigma) ** (-b) * a * (1 / sigma) ** (-a)
-    assert get_coeffs(f, sigma) == {a - b: a}
+    check_dicts(get_coeffs(f, sigma), {a - b: a})
 
     f = sp.exp(s * a) + 2 * sp.exp(s * -a)
-    assert get_coeffs(f, sp.exp(s)) == {a: 1, -a: 2}
+    check_dicts(get_coeffs(f, sp.exp(s)), {a: 1, -a: 2})
 
     c1, c2, c3, d1, d2, d3, tau_a, tau_b = sp.symbols(
         "c1, c2, c3, d1 d2 d3 tau_a tau_b"
@@ -151,7 +164,6 @@ def test_get_leading_column_degrees():
     assert r == c_degs
 
 
-@pytest.mark.skip("Takes too long")
 def test_column_reduced_form():
     s, alpha, beta, m = sp.symbols("s alpha beta m")
     exp = sp.exp
@@ -180,6 +192,10 @@ def test_column_reduced_form():
                 [s**2, s**2, s**2],
             ]
         )
+    if 0:
+        Rp, _ = sp.ring(s.name, EX)
+        mat = DomainMatrix(mat.tolist(), mat.shape, domain=Rp)
+
     mat_cr, u = column_reduced_form(mat, s)
     # works as expected
     err = mat @ u - mat_cr
@@ -191,7 +207,7 @@ def test_column_reduced_form():
     assert is_col_reduced(mat_cr, s)
 
 
-@pytest.mark.skip("Takes too long")
+@pytest.mark.skip("Not related any more")
 def test_generate_transform():
     # tests
     Arnf = np.array(

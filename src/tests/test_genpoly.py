@@ -82,7 +82,7 @@ def test_dict_from_expr():
     for c in [case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
         for expr in f, g:
-            s_dict = GenPoly.dict_from_expr(expr, sigma)
+            s_dict = GenPoly.dict_from_expr(expr, sigma, s)
             print(s_dict)
             test_expr = GenPoly.dict_to_expr(s_dict, sigma)
             print(test_expr)
@@ -97,18 +97,26 @@ def test_add():
 
     for c in [case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
-        fg = GenPoly(f, sigma)
-        gg = GenPoly(g, sigma)
+        fg = GenPoly(f, sigma, s)
+        gg = GenPoly(g, sigma, s)
         rg = fg + gg
         err = f + g - rg.as_expr()
         assert err.simplify() == 0
 
 
+def test_neg():
+    for c in [case_1, case_2, case_3, case_4, case_5]:
+        for expr in c():
+            g_expr = GenPoly(expr, sigma, s)
+            err = expr + (-g_expr).as_expr()
+            assert err.simplify() == 0
+
+
 def test_sub():
     for c in [case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
-        fg = GenPoly(f, sigma)
-        gg = GenPoly(g, sigma)
+        fg = GenPoly(f, sigma, s)
+        gg = GenPoly(g, sigma, s)
         rg = fg - gg
         err = f - g - rg.as_expr()
         assert err.simplify() == 0
@@ -117,8 +125,8 @@ def test_sub():
 def test_mul():
     for c in [case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
-        fg = GenPoly(f, sigma)
-        gg = GenPoly(g, sigma)
+        fg = GenPoly(f, sigma, s)
+        gg = GenPoly(g, sigma, s)
         rg = fg * gg
         err = f * g - rg.as_expr()
         assert err.simplify() == 0
@@ -127,8 +135,8 @@ def test_mul():
 def test_div():
     for c in [case_1, case_2, case_3, case_4, case_5, case_6]:
         f, g = c()
-        fg = GenPoly(f, sigma)
-        gg = GenPoly(g, sigma)
+        fg = GenPoly(f, sigma, s)
+        gg = GenPoly(g, sigma, s)
         rg = fg / gg.LM()
         err = fg - gg.LM() * rg
         assert err.as_expr().simplify() == 0
@@ -137,8 +145,18 @@ def test_div():
 def test_as_numer_denom():
     for c in [case_1, case_2, case_3, case_4, case_5, case_6]:
         for expr in c():
-            xp = GenPoly(expr, sigma)
+            xp = GenPoly(expr, sigma, s)
             num, den = xp.as_numer_denom()
             print(f"Numerator: {num}, Denominator: {den}")
-            err = num.as_expr() / den - expr
+            err = num.as_expr() / den.as_expr() - expr
             assert err.simplify() == 0
+
+
+def test_side_effects():
+    for c in [case_1, case_2, case_3, case_4, case_5, case_6]:
+        for expr in c():
+            a = GenPoly(expr, sigma, s)
+            b = a.as_expr()
+            b += 5
+            err = a - b
+            assert err.as_expr() == -5

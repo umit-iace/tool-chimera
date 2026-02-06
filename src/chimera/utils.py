@@ -42,7 +42,7 @@ def get_coeffs(expr: sp.Expr, gen: sp.Symbol) -> dict:
     Helper function to return the coefficients of different powers
     of *gen* in *expr*.
     """
-    s = GenPoly(expr, gen)
+    s = GenPoly(expr, gen, None)
     c = s.as_dict()
     return c
 
@@ -97,9 +97,9 @@ def get_matrix_terms(mat, sym, subs: dict = None):
     t_cffs = sp.MutableDenseMatrix.zeros(*mat.shape)
     for idx, e in mat.iter_items():
         (lc, ld), (tc, td) = get_term(e, sym)
-        l_cffs[idx] = lc
+        l_cffs[idx] = lc.as_expr()
         l_degs[idx] = ld
-        t_cffs[idx] = tc
+        t_cffs[idx] = tc.as_expr()
         t_degs[idx] = td
     return (l_cffs, l_degs), (t_cffs, t_degs)
 
@@ -196,7 +196,7 @@ def get_term(
         return (lc, ld), (tc, td)
 
     # maybe it is a generalised polynomial?
-    if isinstance(e, GenPoly):
+    if getattr(e, "is_GenPoly", False):
         if e.gen == sym:
             return _handle_gpoly(e)
         else:
@@ -219,7 +219,7 @@ def get_term(
         return _handle_rational(np, dp)
 
     # last resort, try to parse as generalized polynomial
-    p = GenPoly(e, sym)
+    p = GenPoly(e, sym, None)
     return _handle_gpoly(p)
 
 
@@ -422,3 +422,5 @@ def factor_diag_post(mat, diag_mat):
     for c in range(mat.shape[1]):
         res[:, c] = mat[:, c] / diag_mat[c, c]
     return res
+
+
