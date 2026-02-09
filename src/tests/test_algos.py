@@ -180,15 +180,20 @@ def test_reduce_matrix_shifts():
                 [-2, 4, -2 * s**2 + 4 * s / 3 - 1],
             ]
         )
+    assert is_col_reduced(d_mat, s)
 
     # pde part
     if 0:
         # non-rational exponents cause parsing errors
         tau_m = [sp.prime(2*n+1) for n in range(nm)]
         tau_p = [-sp.prime(2*n+2) for n in range(np)]
-    else:
+    elif 0:
         tau_m = [sp.Rational(1,sp.prime(2*n+1)) for n in range(nm)]
-        tau_p = [-sp.Rational(1,sp.prime(2*n+2)) for n in range(np)]
+        tau_p = [-sp.Rational(1,sp.prime(2*n+1)) for n in range(np)]
+    else:
+        tau_m = [sp.sqrt(n+2) for n in range(nm)]
+        tau_p = [0 for n in range(np)]
+
     pred_mat = sp.Matrix.diag([sigma**tau for tau in tau_m])
     delay_mat = sp.Matrix.diag([sigma**tau for tau in tau_p])
     des_state_dim = (sp.Add(*tau_m) - sp.Add(*tau_p)).simplify()
@@ -222,7 +227,7 @@ def test_reduce_matrix_shifts():
     sp.pprint(m.applyfunc(lambda x: GenPoly(x, sigma, s)), wrap_line=False)
     l_cd, t_cd = get_column_degrees(m, sigma)
     cd = [lcd - tcd for lcd, tcd in zip(l_cd, t_cd)]
-    print("Initial Column degrees:")
+    print("Initial column degrees:")
     sp.pprint(cd)
     orig_state_dim = sp.Add(*cd).simplify()
     print(f"Initial state dimension: {orig_state_dim}")

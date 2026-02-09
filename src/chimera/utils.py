@@ -192,7 +192,7 @@ def get_term(
 
     def _handle_frac_element(_f: FracElement):
         np = sp.Poly(_f.numer.as_expr(), *_f.field.symbols)
-        dp = sp.Poly(_f.numer.as_expr(), *_f.field.symbols)
+        dp = sp.Poly(_f.denom.as_expr(), *_f.field.symbols)
         return _handle_rational(np, dp)
 
     def _handle_coefficients(_p):
