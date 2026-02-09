@@ -217,14 +217,15 @@ def test_reduce_matrix_shifts():
     m = pred_mat @ d_mat - q1_mat @ delay_mat @ q0_mat @ d_mat
     l, m, r = canonical_form(m, s, sigma)
 
+    print("Initial transfer matrix:")
     sp.pprint(m, wrap_line=False)
-    sp.pprint(m.applyfunc(lambda x: GenPoly(x, sigma)), wrap_line=False)
+    sp.pprint(m.applyfunc(lambda x: GenPoly(x, sigma, s)), wrap_line=False)
     l_cd, t_cd = get_column_degrees(m, sigma)
     cd = [lcd - tcd for lcd, tcd in zip(l_cd, t_cd)]
     print("Initial Column degrees:")
     sp.pprint(cd)
     orig_state_dim = sp.Add(*cd).simplify()
-    print(f"Initial state dimension {orig_state_dim}")
+    print(f"Initial state dimension: {orig_state_dim}")
     if 0:
         try:
             with open("tmp.pkl", "rb") as f:
@@ -236,6 +237,8 @@ def test_reduce_matrix_shifts():
             pickle.dump(mrg, f)
     else:
         mrg, lg = reduce_matrix_shifts(m, s, sigma)
+
+    print("Reduced transfer matrix:")
     sp.pprint(mrg, wrap_line=False)
 
     print("Checking results:")
@@ -246,7 +249,7 @@ def test_reduce_matrix_shifts():
     print("New column degrees:")
     sp.pprint(cd)
     new_state_dim = sp.Add(*cd).simplify()
-    print(f"New state dimension {new_state_dim}")
+    print(f"New state dimension: {new_state_dim}")
     dim_err = (new_state_dim - des_state_dim).simplify()
     print(f"dimension error: {dim_err}")
     assert dim_err == 0

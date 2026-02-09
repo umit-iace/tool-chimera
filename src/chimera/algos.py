@@ -4,6 +4,7 @@ Custom algorithms for the project
 
 from typing import Union, Tuple, Any
 
+import numpy as np
 import sympy as sp
 
 from .poly import echelon_form, column_reduced_form
@@ -491,10 +492,11 @@ def gplde(
 
 
 def get_column_reduction_transform(mat, col, p_gen, gp_gen=None):
-    l_mat = sp.Matrix.eye(mat.shape[0])
+    # l_mat = sp.Matrix.eye(mat.shape[0])
+    l_mat = np.eye(mat.shape[0], dtype=GenPoly)
     for i in range(col + 1, mat.shape[0]):
-        x = GenPoly(mat[i, col], gp_gen)
-        y = GenPoly(mat[col, col], gp_gen)
+        x = GenPoly(mat[i, col], gp_gen, p_gen)
+        y = GenPoly(mat[col, col], gp_gen, p_gen)
         # x = mat[i, col]
         # y = mat[col, col]
         qe, re = gplde(x, y, p_gen)
@@ -504,11 +506,13 @@ def get_column_reduction_transform(mat, col, p_gen, gp_gen=None):
 
 
 def reduce_matrix_shifts(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
+    gp_mat = np.array([GenPoly(e, gp_gen, p_gen) for e in mat.flat()]).reshape(mat.shape)
     # gp_mat = mat.applyfunc(lambda x: GenPoly(x, gp_gen))
-    gp_mat = mat.copy()
+    # gp_mat = mat.copy()
     check_canonical_form(gp_mat, p_gen, gp_gen)
 
-    l_mat = sp.Matrix.eye(mat.shape[0])
+    # l_mat = sp.Matrix.eye(mat.shape[0])
+    l_mat = np.eye(mat.shape[0], dtype=GenPoly)
     for i in range(1, mat.shape[0]):
         print(f"Reducing row {i}")
         for j in range(mat.shape[0] - 1):
@@ -616,7 +620,7 @@ def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
     # 2: shift degrees are increasing row-wise
     (l_cffs, l_degs), (t_cffs, t_degs) = get_matrix_terms(mat, gp_gen)
     c_degs = l_degs - t_degs
-    for j in range(mat.rows - 1):
+    for j in range(mat.shape[0] - 1):
         diff = c_degs[j + 1, :] - c_degs[j, :]
         if not all(diff[0] == d for d in diff):
             raise ValueError(

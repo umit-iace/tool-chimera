@@ -8,6 +8,8 @@ import numpy as np
 import sympy as sp
 from sympy import random_poly
 from sympy.core.random import seed
+from sympy.polys.fields import FracElement
+from sympy.polys import Poly
 
 from .genpoly import GenPoly
 
@@ -96,7 +98,12 @@ def get_matrix_terms(mat, sym, subs: dict = None):
     l_cffs = sp.MutableDenseMatrix.zeros(*mat.shape)
     t_degs = sp.MutableDenseMatrix.zeros(*mat.shape)
     t_cffs = sp.MutableDenseMatrix.zeros(*mat.shape)
-    for idx, e in mat.iter_items():
+
+    if isinstance(mat, np.ndarray):
+        _iter = np.ndenumerate(mat)
+    else:
+        _iter = mat.iter_items()
+    for idx, e in _iter:
         (lc, ld), (tc, td) = get_term(e, sym)
         l_cffs[idx] = lc.as_expr()
         l_degs[idx] = ld
@@ -163,19 +170,19 @@ def get_term(
         td = _gp.degmin()
         return (lc, ld), (tc, td)
 
-    def _handle_poly(_p: sp.Poly):
+    def _handle_poly(_p: Poly):
         lc = _p.LC()
         ld = _p.degree()
         tc = _p.TC()
-        td = sp.Poly(_p.EM(), _p.gens).degree()
+        td = Poly(_p.EM(), *_p.gens).degree()
         return (lc, ld), (tc, td)
 
-    def _handle_rational(_np, _dp):
+    def _handle_rational(_np: Poly, _dp: Poly):
         lc = _np.LC() / _dp.LC()
         ld = _np.degree() - _dp.degree()
         tc = _np.EC() / _dp.EC()
-        tdn = sp.Poly(_np.EM(), _np.gens).degree()
-        tdd = sp.Poly(_dp.EM(), _dp.gens).degree()
+        tdn = Poly(_np.EM(), *_np.gens).degree()
+        tdd = Poly(_dp.EM(), *_dp.gens).degree()
         if tdn == sp.S.NegativeInfinity:
             tdn = 0
         if tdd == sp.S.NegativeInfinity:
@@ -183,11 +190,16 @@ def get_term(
         td = tdn - tdd
         return (lc, ld), (tc, td)
 
-    def _handle_coefficients(_p, sym):
+    def _handle_frac_element(_f: FracElement):
+        np = sp.Poly(_f.numer.as_expr(), *_f.field.symbols)
+        dp = sp.Poly(_f.numer.as_expr(), *_f.field.symbols)
+        return _handle_rational(np, dp)
+
+    def _handle_coefficients(_p):
         ld = 0
         td = sp.S.Infinity
         for c in _p.coefficients():
-            (_lc, _ld), (_tc, _td) = get_term(c, sym)
+            (_lc, _ld), (_tc, _td) = _handle_frac_element(c)
             if _ld >= ld:
                 ld = _ld
                 lc = _lc
@@ -201,7 +213,7 @@ def get_term(
         if e.gen == sym:
             return _handle_gpoly(e)
         else:
-            return _handle_coefficients(e, sym)
+            return _handle_coefficients(e)
 
     # maybe it is a polynomial expression?
     if e.is_Poly:
