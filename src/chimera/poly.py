@@ -425,53 +425,51 @@ def column_reduced_form(
         cds = get_leading_column_degrees(m, sym)
         if sorted(cds, reverse=True) != cds:
             s_idxs = np.argsort(cds).tolist()[::-1]
+            cds = np.array(cds)[s_idxs].tolist()
             perm = sp.combinatorics.Permutation(s_idxs)
             p = sp.PermutationMatrix(perm).as_explicit().T
             m = m @ p
             u = u @ p
 
-        # select pivot column index k
+        # select pivot column index k by checking if column mh[k]
+        # can be expressed as linear combination of columns mh[k+1:]
         mh = get_lccm(m, sym)
-        cds = get_leading_column_degrees(m, sym)
-        cfs = None
         for k in range(m.shape[1]):
-            # check if mh[k] can be expressed as linear combination of columns mh[k+1:]
-            for q in range(1, m.shape[1] - k):
-                # create some coefficients
-                cs = sp.symbols(f"c_{k + 1}:{k + 1 + q}")
-                # pad them for the first k columns and the remaining ones
-                csp = (
-                    tuple(0 for n in range(k + 1))
-                    + cs
-                    + tuple(0 for n in range(k + 1 + q, m.shape[1]))
-                )
-                expr = mh[:, k] - sp.Add(*[c * mh[:, idx] for idx, c in enumerate(csp)])
-                # compute basis coefficients
-                sol = sp.solve(expr, cs)
-                if sol:
-                    sol[0] = 0
-                    cfs = [sol[c] for c in csp]
-                    break
-            if cfs is not None:
+            col = mh[:, k]
+            sub = mh[:, k + 1 :]
+            c_sym = sp.symbols(f"c_{k + 1}:{m.shape[1]}")
+            c_sol = sp.linsolve((sub, col), *c_sym)
+            if c_sol:
+                # success, extract the coefficients
+                triv_d = {c: 0 for c in c_sym}
+                c_dict = {idx: 0 for idx in range(m.shape[1])}
+                c_dict |= {
+                    k + 1 + idx: cs.subs(triv_d) for idx, cs in enumerate(c_sol.args[0])
+                }
                 break
+        else:
+            raise ValueError(
+                f"Could not express {k}th column as linear combination"
+                f"of columns {k + 1} to {m.shape[1]}."
+            )
 
         # eliminate kth column from mh
         rd = {}
         for i in range(m.shape[1]):
-            rd[i,i] = 1
+            rd[i, i] = 1
             if i != k:
                 if 0:
-                    monom = {cds[k] - cds[i]: -cfs[i]}
+                    monom = {cds[k] - cds[i]: -c_dict[i]}
                     poly = m.domain.from_dict(monom)
-                    rd[i,k] = poly
+                    rd[i, k] = poly
                 else:
-                    rd[i,k] = -cfs[i] * sym ** (cds[k] - cds[i])
+                    rd[i, k] = -c_dict[i] * sym ** (cds[k] - cds[i])
         r = sp.Matrix.from_dok(m.shape[1], m.shape[1], rd)
         # r = DomainMatrix.from_dod(rd, (m.shape[1], m.shape[1]), m.domain)
+
+        # apply the transform
         m = m @ r
         m.simplify()
-
-        # remember the operations
         u = u @ r
 
     return m, u
