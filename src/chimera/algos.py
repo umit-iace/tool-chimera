@@ -351,14 +351,14 @@ def gpld(
     """
     if not isinstance(x, GenPoly) or not isinstance(y, GenPoly):
         raise ValueError("Only arguments of type GenPoly supported")
-    assert x.gen == y.gen
+    assert x.gens == y.gens
     assert y != 0
 
     y_dmax = y.degmax()
     y_dmin = y.degmin()
 
-    q = GenPoly(0, x.gen)
-    r = x
+    q = GenPoly(0, *x.gens)
+    r = x.copy()
     while True:
         r_dmax = r.degmax()
         r_dmin = r.degmin()
@@ -386,7 +386,7 @@ def gpld(
             q_kd = {(r_dmin - y_dmin): r.TC() / y.TC()}
         else:
             break
-        q_k = GenPoly.from_dict(q_kd, y.gen)
+        q_k = GenPoly.from_dict(q_kd, *y.gens)
 
         r = r - q_k * y
         q += q_k
@@ -428,12 +428,12 @@ def make_entire(
     num, den = expr.as_numer_denom()
 
     # factorise the denominator, extract leading coefficient for normalisation
-    p_den = sp.Poly(den, rat_sym)
+    p_den = sp.poly(den.as_expr(), rat_sym)
     lc = p_den.LC()
     rts = sp.roots(p_den, rat_sym)
 
     # start without denominator and iteratively add zeroes
-    egp = GenPoly(num / lc, gen_expr)
+    egp = GenPoly(num / lc, gen_expr, rat_sym)
     for r, m in rts.items():
         if verbose:
             print(f"Lifting root at {rat_sym}={r} with multiplicity {m}")
@@ -486,7 +486,7 @@ def gplde(
     if q.is_zero:
         return q, r
     qe, p = make_entire(q, c_gen)
-    re = r - p * y
+    re = r - y.mul(p)
     return qe, re
 
 

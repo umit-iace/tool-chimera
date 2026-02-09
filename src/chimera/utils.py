@@ -1,6 +1,7 @@
 """
 Utility functions
 """
+
 from random import randint
 
 import numpy as np
@@ -375,12 +376,15 @@ def check_singularities(
     if not isinstance(expr, GenPoly):
         expr = GenPoly(expr, gp_sym)
     num, den = expr.as_numer_denom()
-    poles = sp.roots(den, rat_sym)
+    p_den = sp.Poly(den.as_expr(), rat_sym)
+    poles = sp.roots(p_den, rat_sym)
     for p, m in poles.items():
         if verbose:
             print(f"Testing pole at s={p}:")
-        for expr in num, den:
-            res = expr.as_expr().subs(gp_sym, gp_expr).evalf(subs={rat_sym: p})
+        for term in num, den:
+            res = term.as_expr().evalf(
+                subs={gp_sym: gp_expr.subs(rat_sym, p), rat_sym: p}
+            )
             if not np.isclose(complex(res), 0):
                 return False
     else:
@@ -388,7 +392,9 @@ def check_singularities(
 
 
 def random_poly_mat(m, n, order, c_min, c_max, p_gen):
-    mat = sp.Matrix([random_poly(p_gen, randint(0,order), c_min, c_max) for i in range(m*n)]).reshape(m,n)
+    mat = sp.Matrix(
+        [random_poly(p_gen, randint(0, order), c_min, c_max) for i in range(m * n)]
+    ).reshape(m, n)
     return mat
 
 
@@ -396,20 +402,20 @@ def zero_lower_left(mat):
     res = sp.MutableDenseMatrix(mat)
     for r in range(mat.shape[0]):
         for c in range(0, r):
-            res[r,c] = 0
+            res[r, c] = 0
     return res
 
 
 def zero_upper_right(mat):
     res = sp.MutableDenseMatrix(mat)
     for r in range(mat.shape[0]):
-        for c in range(r+1, mat.shape[1]):
-            res[r,c] = 0
+        for c in range(r + 1, mat.shape[1]):
+            res[r, c] = 0
     return res
 
 
 def factor_diag_pre(mat, diag_mat):
-    assert  diag_mat.shape[1] == mat.shape[0]
+    assert diag_mat.shape[1] == mat.shape[0]
     res = sp.Matrix.zeros(*mat.shape)
     for r in range(mat.shape[0]):
         res[r, :] = mat[r, :] / diag_mat[r, r]
@@ -422,5 +428,3 @@ def factor_diag_post(mat, diag_mat):
     for c in range(mat.shape[1]):
         res[:, c] = mat[:, c] / diag_mat[c, c]
     return res
-
-

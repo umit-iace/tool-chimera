@@ -107,21 +107,29 @@ class GenPoly(sp.Basic):
         return f.mul(g ** (-1))
 
     def __str__(self):
-        return str(f"GenPoly({self.exponents()}, {self.gen})")
+        return str(f"GenPoly({self.exponents()}, {self.gens})")
 
     def __repr__(self):
-        return str(f"GenPoly({self.as_dict()}, {self.gen})")
+        return str(f"GenPoly({self.as_dict()}, {self.gens})")
 
     def add_ground(f, g):
-        if g == S.Zero:
+        if g == 0:
             return GenPoly(f, *f.gens)
         rd = f.as_dict()
-        c0 = rd.get(0, S.Zero)
-        rd[0] = c0 + c0.ring.from_expr(g)
+        if 0 in rd:
+            c0 = rd[0]
+        else:
+            Fc, _ = field(''.join(s.name for s in f.gens[1:]), EX)
+            c0 = Fc.zero
+        if isinstance(g, FracElement):
+            rd[0] = c0 + g
+        else:
+            rd[0] = c0 + c0.field.from_expr(g)
         return GenPoly.from_dict(rd, *f.gens)
 
     def add(f, g):
-        g = sp.sympify(g)
+        if not isinstance(g, (PolyElement, FracElement)):
+            g = sp.sympify(g)
         if not f.rep:
             return g
         if not isinstance(g, GenPoly):
@@ -144,26 +152,28 @@ class GenPoly(sp.Basic):
         rd.update({exp: fd[exp] for exp in f_only_exps})
         rd.update({exp: gd[exp] for exp in g_only_exps})
 
-        return GenPoly.from_dict(rd, f.gen)
+        return GenPoly.from_dict(rd, *f.gens)
 
     def neg(f):
         rd = {exp: -cff for exp, cff in f.as_dict().items()}
-        return GenPoly.from_dict(rd, f.gen)
+        return GenPoly.from_dict(rd, *f.gens)
 
     def sub(f, g):
         return f.add(-g)
 
     def mul_ground(f, g):
-        # g = sp.sympify(g)
+        if not isinstance(g, (PolyElement, FracElement)):
+            g = sp.sympify(g)
         rd = {}
         for exp, cff in f.as_dict().items():
             rd[exp] = cff * g
 
-        return GenPoly.from_dict(rd, f.gen)
+        return GenPoly.from_dict(rd, *f.gens)
 
     def mul(f, g):
-        g = sp.sympify(g)
-        if g == S.Zero:
+        if not isinstance(g, (PolyElement, FracElement)):
+            g = sp.sympify(g)
+        if g == 0:
             return GenPoly(0, *f.gens)
         if not isinstance(g, GenPoly):
             if f.gen not in g.as_expr().free_symbols:
@@ -219,6 +229,8 @@ class GenPoly(sp.Basic):
                 c_denoms.append(c.ring.one)
             elif isinstance(c, FracElement):
                 c_denoms.append(c.denom)
+            else:
+                raise NotImplementedError
 
         denom = reduce(lambda x, y: x.lcm(y), c_denoms)
         numer = self.mul_ground(denom)
@@ -251,7 +263,11 @@ class GenPoly(sp.Basic):
         work with rational powers of generators in an expression and thus
         create powers and coefficients of a generalized polynomial.
         """
-        gp_gen, cff_gen = gens
+        gp_gen = gens[0]
+        try:
+            cff_gen = gens[1]
+        except IndexError:
+            cff_gen = None
         w = sp.Wild("w")
 
         # try some shortcuts
@@ -311,14 +327,14 @@ class GenPoly(sp.Basic):
 
         if cff_gen is not None:
             # treat coefficients as polynomials or rationals in s
-            Fc, fc_map = construct_fraction_field(e_c_map.values(), cff_gen)
+            # Fc, fc_map = construct_fraction_field(e_c_map.values(), cff_gen)
+            Fc, sx = field(cff_gen,EX)
             red_map = {}
-            for e, c in e_c_map.items():
-                if c.is_polynomial(cff_gen):
-                    cp = Fc.ring.from_expr(c)
-                else:
-                    cp = Fc.from_expr(c)
-                red_map[e] = cp
+            # for e, c in e_c_map.items():
+                # if c.is_polynomial(cff_gen):
+                #     cp = Fc.ring.from_expr(c)
+                # else:
+            red_map = {e: Fc.from_expr(c) for e,c in e_c_map.items()}
             return red_map
         else:
             return e_c_map

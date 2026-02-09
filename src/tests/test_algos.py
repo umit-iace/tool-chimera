@@ -66,7 +66,7 @@ def test_make_entire():
     ]
     for expr in exprs:
         print(f"Testing {expr}:")
-        gp = GenPoly(expr, sigma)
+        gp = GenPoly(expr, sigma, s)
         egp, p = make_entire(gp, s)
 
         print("Checking for singularities in quotient and remainder:")
@@ -76,11 +76,10 @@ def test_make_entire():
         for exp, cff in egp.as_dict().items():
             if exp == 0:
                 continue
-            err = (gp.as_dict()[exp] - cff).simplify()
+            err = (gp.as_dict()[exp] - cff).as_expr().simplify()
             assert err == 0
 
 
-# @pytest.mark.skip("Takes too long")
 def test_gplde():
     xl = [
         (3 * s + 2 * s**2) * sigma ** sp.sqrt(5) + (s**2 + 2 * s) * sigma + 2 * s + 1,
@@ -107,8 +106,8 @@ def test_gplde():
     ]
     for x, y in zip(xl, yl):
         print(f"Dividing {x} by {y}:")
-        xp = GenPoly(x, sigma)
-        yp = GenPoly(y, sigma)
+        xp = GenPoly(x, sigma, s)
+        yp = GenPoly(y, sigma, s)
         qep, rep = gplde(xp, yp, s)
         qe = qep.as_expr()
         re = rep.as_expr()
@@ -126,8 +125,7 @@ def test_gplde():
         assert err == 0
 
         print("Checking for singularities in remainder:")
-        # TODO speed this check up so that we can acutally test it
-        # check_singularities(rep, s, sigma, sp.exp(s), verbose=True)
+        check_singularities(rep, s, sigma, sp.exp(s), verbose=True)
 
 
 def test_reduce_matrix_shifts():
