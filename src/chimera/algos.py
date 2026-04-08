@@ -15,7 +15,7 @@ from .utils import (
     is_col_reduced,
 )
 
-__all__ = ["gpld", "make_entire", "gplde", "eliminate_delays"]
+__all__ = ["gpld", "make_entire", "gplde", "eliminate_delays", "reduce_matrix_shifts"]
 
 
 def gcdexs(
@@ -503,7 +503,7 @@ def get_column_reduction_transform(mat, col, p_gen, gp_gen=None):
     return l_mat
 
 
-def reduce_matrix_shifts(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
+def reduce_matrix_shifts(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol) -> Tuple[sp.Matrix, sp.Matrix]:
     # gp_mat = mat.applyfunc(lambda x: GenPoly(x, gp_gen))
     gp_mat = mat.copy()
     check_canonical_form(gp_mat, p_gen, gp_gen)

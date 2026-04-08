@@ -7,10 +7,11 @@ import numpy as np
 import sympy as sp
 from sympy import random_poly
 from sympy.core.random import seed
+from sympy.core.function import AppliedUndef
 
 from .genpoly import GenPoly
 
-__all__ = ["check_singularities", "get_lccm", "is_col_reduced"]
+__all__ = ["check_singularities", "get_lccm", "is_col_reduced", "inverse_laplace_transform", "simplify_conv_integrals"]
 
 # seed using the 'cat ran over the keyboard' method
 rng_seed = 56802470204575498132489694523498
@@ -48,7 +49,7 @@ def get_coeffs(expr: sp.Expr, gen: sp.Symbol) -> dict:
 
 
 def get_matrix_coeffs(
-    mat: sp.Matrix, gen: sp.Symbol, exponents_only=False
+        mat: sp.Matrix, gen: sp.Symbol, exponents_only=False
 ) -> list[list[dict]]:
     coeffs = []
     for j in range(mat.rows):
@@ -105,7 +106,7 @@ def get_matrix_terms(mat, sym, subs: dict = None):
 
 
 def get_leading_column_degrees(
-    mat: sp.Matrix, sym: sp.Symbol, subs: dict = None
+        mat: sp.Matrix, sym: sp.Symbol, subs: dict = None
 ) -> list:
     """
     Extract the highest degrees of each column
@@ -116,7 +117,7 @@ def get_leading_column_degrees(
 
 
 def get_trailing_column_degrees(
-    mat: sp.Matrix, sym: sp.Symbol, subs: dict = None
+        mat: sp.Matrix, sym: sp.Symbol, subs: dict = None
 ) -> list:
     """
     Extract the smallest degrees of each column
@@ -137,7 +138,7 @@ def get_column_degrees(mat: sp.Matrix, sym: sp.Symbol, subs: dict = None) -> lis
 
 
 def get_term(
-    e: sp.Expr, sym: sp.Symbol
+        e: sp.Expr, sym: sp.Symbol
 ) -> tuple[tuple[sp.Expr, sp.Expr], tuple[sp.Expr, sp.Expr]]:
     """
     Extract the leading coefficient of some expression
@@ -316,9 +317,9 @@ def check_delay_condition(mat, delay_sym, diff_sym):
 
 def check_all_conds(mat, pred_sym, delay_sym, diff_sym):
     return (
-        check_derivative_condition(mat, diff_sym)
-        and check_prediction_condition(mat, pred_sym, diff_sym)
-        and check_delay_condition(mat, delay_sym, diff_sym)
+            check_derivative_condition(mat, diff_sym)
+            and check_prediction_condition(mat, pred_sym, diff_sym)
+            and check_delay_condition(mat, delay_sym, diff_sym)
     )
 
 
@@ -353,11 +354,11 @@ def check_equal(expr1, expr2, n=10, positive=False, strictly_positive=False):
 
 
 def check_singularities(
-    expr: sp.Expr,
-    rat_sym: sp.Symbol,
-    gp_sym: sp.Symbol,
-    gp_expr: sp.Expr,
-    verbose: bool = False,
+        expr: sp.Expr,
+        rat_sym: sp.Symbol,
+        gp_sym: sp.Symbol,
+        gp_expr: sp.Expr,
+        verbose: bool = False,
 ):
     """
     Check if denominator zeroes are numerator zeroes as well
@@ -388,7 +389,7 @@ def check_singularities(
 
 
 def random_poly_mat(m, n, order, c_min, c_max, p_gen):
-    mat = sp.Matrix([random_poly(p_gen, randint(0,order), c_min, c_max) for i in range(m*n)]).reshape(m,n)
+    mat = sp.Matrix([random_poly(p_gen, randint(0, order), c_min, c_max) for i in range(m * n)]).reshape(m, n)
     return mat
 
 
@@ -396,20 +397,20 @@ def zero_lower_left(mat):
     res = sp.MutableDenseMatrix(mat)
     for r in range(mat.shape[0]):
         for c in range(0, r):
-            res[r,c] = 0
+            res[r, c] = 0
     return res
 
 
 def zero_upper_right(mat):
     res = sp.MutableDenseMatrix(mat)
     for r in range(mat.shape[0]):
-        for c in range(r+1, mat.shape[1]):
-            res[r,c] = 0
+        for c in range(r + 1, mat.shape[1]):
+            res[r, c] = 0
     return res
 
 
 def factor_diag_pre(mat, diag_mat):
-    assert  diag_mat.shape[1] == mat.shape[0]
+    assert diag_mat.shape[1] == mat.shape[0]
     res = sp.Matrix.zeros(*mat.shape)
     for r in range(mat.shape[0]):
         res[r, :] = mat[r, :] / diag_mat[r, r]
@@ -421,4 +422,192 @@ def factor_diag_post(mat, diag_mat):
     res = sp.Matrix.zeros(*mat.shape)
     for c in range(mat.shape[1]):
         res[:, c] = mat[:, c] / diag_mat[c, c]
+    return res
+
+
+def simplify_conv_integrals(expr):
+    if isinstance(expr, sp.Integral):
+        int_kernel = expr.args[0]
+        int_var, lb, ub = expr.args[1]
+        if lb == -sp.oo and ub == sp.oo:
+            res = 0
+            for r in _simplify_conv(int_kernel, int_var, lb, ub):
+                res += expr.func(r[0], r[1])
+            return res
+        else:
+            return expr
+
+    # traverse the tree
+    new_args = tuple(simplify_conv_integrals(arg) for arg in expr.args)
+    if new_args != expr.args:
+        try:
+            expr = expr.func(*new_args).doit()
+        except Exception as e:
+            # Fallback: keep original node if reconstruction fails
+            print(e)
+            print(expr)
+            print(expr.args)
+            print(new_args)
+            pass
+
+    return expr
+
+
+def _simplify_conv(kernel, var, lower, upper):
+    results = []
+
+    # identify applied undefined functions that are being convolved
+    c_funcs = kernel.atoms(AppliedUndef)
+
+    # # collect expressions concerning them
+    # col_kernel = kernel.collect(c_funcs)
+    # display(col_kernel)
+
+    # treat each function separately
+    for func in c_funcs:
+        factor = kernel.coeff(func)
+        res = _simplify_conv_factor(factor, var, lower, upper)
+        for r in res:
+            results.append((r[0] * func, r[1]))
+
+    return results
+
+
+def _simplify_conv_factor(factor, var, lower, upper):
+    res = []
+
+    # display(factor)
+
+    # start with isolated dirichlet deltas
+    dir_factors = 0
+    hea_factors = {}
+    rem_factors = 0
+    for term in sp.Add.make_args(factor.expand()):
+        if term.has(sp.DiracDelta) and not term.has(sp.Heaviside):
+            dir_factors += term
+        elif term.has(sp.Heaviside):
+            # display(term)
+            f = term.atoms(sp.Heaviside)
+            assert len(f) == 1
+            f = list(f)[0]
+            # display(f)
+            c = (term / f).simplify()
+            if c in hea_factors:
+                hea_factors[c] += [f]
+            else:
+                if -c in hea_factors:
+                    hea_factors[-c] += [-f]
+                else:
+                    hea_factors[c] = [f]
+        else:
+            rem_factors += term
+
+    # just re-add the Diracs, sympy will simplify them
+    res.append((dir_factors, (var, lower, upper)))
+
+    # continue with heavyside expressions
+    for c, funcs in hea_factors.items():
+        # order funcs by arg and correct the signs such that
+        # expr = factor * (H(lb) - H(ub))
+
+        # extract and order the bounds
+        bounds = []
+        for f in funcs:
+            if not isinstance(f, sp.Heaviside):
+                # ignore the minus sign
+                if isinstance(f, sp.Mul):
+                    for a in f.args:
+                        if isinstance(a, sp.Heaviside):
+                            f = a
+                            break
+                else:
+                    raise NotImplementedError
+            bounds.append(f.args[0].subs(var, 0))
+        s_funcs, s_bounds = zip(*sorted(zip(funcs, bounds), key=lambda x: x[1]))
+
+        # check for minus sign at the wrong place
+        if not isinstance(s_funcs[0], sp.Heaviside):
+            s_funcs = [-1 * f for f in s_funcs]
+            c *= -1
+
+        # append new factor with reduced bounds
+        res.append((c, (var, *bounds)))
+
+    # add the remainder
+    res.append((rem_factors, (var, lower, upper)))
+    return res
+
+
+def substitute_lower_derivative_lumped_delay(var, der_order, max_der_order, kernel, bounds):
+    sum = 0
+    t, tau, sigma = sp.Symbol("t tau sigma")
+    tau_lo, tau_hi = bounds
+    i = der_order
+    n = max_der_order
+    for k in range(i, n):
+        s1 = (tau - tau_lo) ** (k - i) / sp.factorial(k - i) * var.diff(k)(t - tau_lo)
+
+        int_kernel = (tau - sigma) ** (n - i - 1) / sp.factorial(n - i - 1) * var.diff(n)(t + sigma)
+
+        s2 = sp.Integral(int_kernel, (sigma, tau_lo, tau_hi))
+        sum += s1 + s2
+
+    return sum
+
+
+def substitute_lower_derivative_distributed_delay(var, der_order, max_der_order, kernel, bounds):
+    sum = 0
+    t, tau, sigma = sp.Symbol("t tau sigma")
+    tau_lo, tau_hi = bounds
+    i = der_order
+    n = max_der_order
+    for k in range(i, n):
+        int1 = (tau_hi - tau) ** (k - i) * kernel(tau)
+        i1 = sp.Integral(int1, (tau, tau_lo, tau_hi))
+        i1 *= (-1) * +(k - i) / sp.factorial(k - i) * var.diff(k)(t + tau_hi)
+
+        int2 = (tau - sigma) ** (n - i - 1) * kernel(sigma)
+        i2 = sp.Integral(int2, (sigma, tau_lo, tau_hi))
+        int3 = i2 * (-1) ** (n - 1) / sp.factorial(n - i - 1) * var.diff(n)(t + tau)
+        i3 = sp.Integral(int3, (tau, tau_lo, tau_hi))
+        sum += i1 + i3
+
+    return sum
+
+
+def inverse_laplace_transform(expr, diff_sym, shift_sym, ana_sym):
+    # extract the normalised common polynomial denominator
+    nrs, drs = expr.together(shift_sym).as_numer_denom()
+    drs_qp = GenPoly(drs, shift_sym)
+    assert len(drs_qp.exponents()) == 1
+    d_lc = shift_sym ** drs_qp.degmax() * sp.Poly(drs_qp.LC(), diff_sym).LC()
+    nn = (nrs / d_lc).simplify()
+    dn = (drs / d_lc).simplify()
+
+    # verify
+    err = (nn / dn - expr).simplify()
+    assert err == 0
+
+    # collect the shifts
+    nn_qp = GenPoly(nn, shift_sym)
+
+    # perform partial fraction decomposition of the common poles
+    d_pfd = (1 / dn).apart()
+    # display(d_pfd)
+
+    res = 0
+    for term in sp.Add.make_args(d_pfd):
+        for exp, coeff in nn_qp.as_dict().items():
+            if 0:
+                # Laplace transform of sympy does not know how the handle shifts
+                s_expr = term * coeff * sp.exp(s * exp)
+            else:
+                # so we perform the shift manually
+                s_expr = term * coeff
+                t_expr = sp.inverse_laplace_transform(s_expr, diff_sym, ana_sym
+                                                      ).subs(ana_sym, ana_sym + exp)
+            # display(s_expr)
+            # display(t_expr)
+            res += t_expr
+
     return res
