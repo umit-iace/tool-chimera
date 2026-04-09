@@ -12,7 +12,7 @@ from sympy.core.function import AppliedUndef
 from .genpoly import GenPoly
 
 __all__ = ["check_singularities", "get_lccm", "get_matrix_terms", "is_col_reduced", "inverse_laplace_transform",
-           "simplify_conv_integrals"]
+           "simplify_conv_integrals", "substitute_non_state_terms"]
 
 # seed using the 'cat ran over the keyboard' method
 rng_seed = 56802470204575498132489694523498
