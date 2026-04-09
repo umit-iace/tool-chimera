@@ -11,7 +11,8 @@ from sympy.core.function import AppliedUndef
 
 from .genpoly import GenPoly
 
-__all__ = ["check_singularities", "get_lccm", "is_col_reduced", "inverse_laplace_transform", "simplify_conv_integrals"]
+__all__ = ["check_singularities", "get_lccm", "get_matrix_terms", "is_col_reduced", "inverse_laplace_transform",
+           "simplify_conv_integrals"]
 
 # seed using the 'cat ran over the keyboard' method
 rng_seed = 56802470204575498132489694523498
@@ -538,41 +539,141 @@ def _simplify_conv_factor(factor, var, lower, upper):
     return res
 
 
-def substitute_lower_derivative_lumped_delay(var, der_order, max_der_order, kernel, bounds):
-    sum = 0
-    t, tau, sigma = sp.Symbol("t tau sigma")
+def substitute_non_state_terms(expr, var, order, lower, upper):
+    """
+    Substitute terms that will not be part of the controller form state
+
+    var: Variable to look at
+    order: Derivative order of the distributed state member
+    lower:  Lower bound of the shift interval
+    upper:  Upper bound of the shift interval
+    """
+    if var.name in str(expr.atoms(sp.core.function.AppliedUndef)):
+        if isinstance(expr, sp.Integral):
+            # distributed case
+            return _substitute_non_state_distributed_term(expr, var, order)
+        if isinstance(expr, (sp.core.function.AppliedUndef, sp.Subs)):
+            # lumped case
+            return _substitute_non_state_lumped_term(expr, var, order, lower, upper)
+
+    new_args = tuple(substitute_non_state_terms(a, var, order, lower, upper) for a in expr.args)
+    if new_args != expr.args:
+        return expr.func(*new_args)
+    return expr
+
+
+def _substitute_non_state_lumped_term(expr, var, order, lower, upper):
+    time_sym = var.args[0]
+    if isinstance(expr, sp.core.function.AppliedUndef):
+        func_term = expr
+        der_order = 0
+    elif isinstance(expr, sp.Subs):
+        der_term = expr.args[0]
+        if not isinstance(der_term, sp.Derivative):
+            return expr
+        func_term = der_term.args[0].subs(zip(*expr.args[1:]))
+        assert len(der_term.args) == 2
+        der_order = der_term.args[1][1]
+    else:
+        raise NotImplementedError(expr)
+
+    # extract the shift amplitude
+    time_arg = func_term.args[0]
+    shift_degree = time_arg - time_sym
+
+    # highest derivatives are allowed
+    if der_order == order:
+        # with all but the maximum shifts
+        if shift_degree < upper:
+            return expr
+        else:
+            print("Warning, ignoring possibly incompatible term")
+            return expr
+
+    # lumped lower derivatives only allowed with minimum shift (lower shift boundary)
+    if shift_degree == lower:
+        return expr
+
+    # substitute lumped term
+    # print(f"Found incompatible term {expr}")
+    return _substitute_lower_derivative_lumped_delay(var, shift_degree, der_order, order, None, (lower, upper))
+
+
+def _substitute_lower_derivative_lumped_delay(var, shift_degree, der_order, max_der_order, kernel, bounds):
+    time_sym = var.args[0]
+    theta, sigma = sp.symbols("theta sigma")
+    tau = shift_degree
     tau_lo, tau_hi = bounds
     i = der_order
     n = max_der_order
-    for k in range(i, n):
-        s1 = (tau - tau_lo) ** (k - i) / sp.factorial(k - i) * var.diff(k)(t - tau_lo)
 
-        int_kernel = (tau - sigma) ** (n - i - 1) / sp.factorial(n - i - 1) * var.diff(n)(t + sigma)
+    res = 0
+    for k in range(i, n):
+        der = var.subs(time_sym, theta).diff(theta, k).subs(theta, time_sym + tau_lo)
+        s1 = (tau - tau_lo) ** (k - i) / sp.factorial(k - i) * der
+
+        int_kernel = (tau - sigma) ** (n - i - 1) / sp.factorial(n - i - 1) * var.subs(time_sym, theta).diff(theta,
+                                                                                                             n).subs(
+            theta,
+            time_sym + sigma)
 
         s2 = sp.Integral(int_kernel, (sigma, tau_lo, tau_hi))
-        sum += s1 + s2
+        res += s1 + s2
 
-    return sum
+    # print(f"Replacing with {res}")
+    return res
 
 
-def substitute_lower_derivative_distributed_delay(var, der_order, max_der_order, kernel, bounds):
-    sum = 0
-    t, tau, sigma = sp.Symbol("t tau sigma")
-    tau_lo, tau_hi = bounds
+def _substitute_non_state_distributed_term(expr, var, order):
+    time_sym = var.args[0]
+    int_arg, int_bounds = expr.args
+
+    conv_kernel, func_part = int_arg.as_independent(time_sym)
+    if isinstance(func_part, sp.core.function.AppliedUndef):
+        # func_term = func_part
+        der_order = 0
+    elif isinstance(func_part, sp.Subs):
+        der_term = func_part.args[0]
+        if not isinstance(der_term, sp.Derivative):
+            return expr
+        # func_term = der_term.args[0].subs(zip(*func_part.args[1:]))
+        assert len(der_term.args) == 2
+        der_order = der_term.args[1][1]
+    else:
+        raise NotImplementedError(expr)
+
+    # check the derivative order
+    if der_order == order:
+        # nothing to do
+        return expr
+
+    # substitute the integral
+    # print(f"Found incompatible term {expr}")
+    return _substitute_lower_derivative_distributed_delay(var, der_order, order, conv_kernel, int_bounds)
+
+
+def _substitute_lower_derivative_distributed_delay(var, der_order, max_der_order, kernel, bounds):
+    theta, sigma = sp.symbols("theta sigma")
+    time_sym = var.args[0]
+
+    tau, tau_lo, tau_hi = bounds
     i = der_order
     n = max_der_order
+
+    res = 0
     for k in range(i, n):
-        int1 = (tau_hi - tau) ** (k - i) * kernel(tau)
+        int1 = (tau_hi - tau) ** (k - i) * kernel
         i1 = sp.Integral(int1, (tau, tau_lo, tau_hi))
-        i1 *= (-1) * +(k - i) / sp.factorial(k - i) * var.diff(k)(t + tau_hi)
+        i1 *= (-1) * +(k - i) / sp.factorial(k - i) * var.subs(time_sym, theta).diff(theta, k).subs(theta, time_sym + tau_hi)
 
-        int2 = (tau - sigma) ** (n - i - 1) * kernel(sigma)
-        i2 = sp.Integral(int2, (sigma, tau_lo, tau_hi))
-        int3 = i2 * (-1) ** (n - 1) / sp.factorial(n - i - 1) * var.diff(n)(t + tau)
+        int2 = (tau - sigma) ** (n - i - 1) * kernel.subs(tau, sigma)
+        i2 = sp.Integral(int2, (sigma, tau_lo, tau))
+        int3 = i2 * (-1) ** (n - 1) / sp.factorial(n - i - 1) * var.subs(time_sym, theta).diff(theta, n).subs(theta, time_sym + tau)
         i3 = sp.Integral(int3, (tau, tau_lo, tau_hi))
-        sum += i1 + i3
+        res += i1 + i3
 
-    return sum
+    # print(f"Replacing with {res}")
+    return res
 
 
 def inverse_laplace_transform(expr, diff_sym, shift_sym, ana_sym):
