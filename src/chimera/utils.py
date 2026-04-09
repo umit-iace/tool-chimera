@@ -466,7 +466,7 @@ def _simplify_conv(kernel, var, lower, upper):
 
     # treat each function separately
     for func in c_funcs:
-        factor = kernel.coeff(func)
+        factor = kernel.expand().coeff(func)
         res = _simplify_conv_factor(factor, var, lower, upper)
         for r in res:
             results.append((r[0] * func, r[1]))
@@ -577,18 +577,13 @@ def _substitute_non_state_lumped_term(expr, var, order, lower, upper):
     else:
         raise NotImplementedError(expr)
 
+    # highest derivatives are allowed
+    if der_order == order:
+        return expr
+
     # extract the shift amplitude
     time_arg = func_term.args[0]
     shift_degree = time_arg - time_sym
-
-    # highest derivatives are allowed
-    if der_order == order:
-        # with all but the maximum shifts
-        if shift_degree < upper:
-            return expr
-        else:
-            print("Warning, ignoring possibly incompatible term")
-            return expr
 
     # lumped lower derivatives only allowed with minimum shift (lower shift boundary)
     if shift_degree == lower:
@@ -761,7 +756,10 @@ def substitute_hcf_state(expr, mapping, temp_var, spat_var):
 
         if func is not None:
             orig_arg = func.args[0]
-            subs_arg = var_map[(func.name, der_order)]
+            subs_arg = var_map.get((func.name, der_order), None)
+            if subs_arg is None:
+                return _expr
+
             ref_func = func.func(temp_var).diff(temp_var, der_order).subs(temp_var, subs_arg)
             rep_func = mapping[ref_func]
             if len(rep_func.args) == 1:
@@ -769,8 +767,10 @@ def substitute_hcf_state(expr, mapping, temp_var, spat_var):
             elif len(rep_func.args) == 2:
                 d = sp.Dummy()
                 orig_arg = orig_arg.subs(spat_var, d)
-                spat_expr = sp.solve(orig_arg.subs(temp_var, subs_arg) - temp_var, spat_var)[0]
-                arg_map = {spat_var: spat_expr.subs(d, spat_var)}
+                # resolve the argument shifts
+                tb = sp.solve(subs_arg.subs(spat_var, 0), temp_var)[0]
+                spat_expr = orig_arg.subs(temp_var, tb).subs(d, spat_var)
+                arg_map = {spat_var: spat_expr}
             else:
                 raise NotImplementedError
 
