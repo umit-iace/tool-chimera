@@ -716,7 +716,7 @@ def inverse_laplace_transform(expr, diff_sym, shift_sym, ana_sym):
     return res
 
 
-def build_hcf_state(y_vec, derivative_orders, shift_intervals):
+def build_hcf_state(y_vec, derivative_orders, shift_intervals, temp_var, spat_var):
     y_eta_map = {}
     eta_y_map = {}
     hcf_vec = []
@@ -724,12 +724,12 @@ def build_hcf_state(y_vec, derivative_orders, shift_intervals):
         for j in range(1, derivative_orders[i] + 2):
             if j <= derivative_orders[i]:
                 # lumped part
-                eta = sp.Function(f"\\eta^O_{{{ {i + 1}, {j} }}}")(t)
-                y = y_vec[i].diff(t, j - 1)
+                eta = sp.Function(f"\\eta^O_{{{ {i + 1}, {j} }}}")(temp_var)
+                y = y_vec[i].diff(temp_var, j - 1)
             else:
                 # distributed part
-                eta = sp.Function(f"\\eta^P_{{{i + 1}}}")(tau, t)
-                y = y_vec[i].diff(t, j - 1).subs(t, t + shift_intervals[i][0] + tau)
+                eta = sp.Function(f"\\eta^P_{{{i + 1}}}")(spat_var, temp_var)
+                y = y_vec[i].diff(temp_var, j - 1).subs(temp_var, temp_var + shift_intervals[i][0] + spat_var)
 
             eta_y_map[eta] = y
             y_eta_map[y] = eta
