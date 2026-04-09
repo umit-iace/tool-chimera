@@ -12,7 +12,7 @@ from sympy.core.function import AppliedUndef
 from .genpoly import GenPoly
 
 __all__ = ["check_singularities", "get_lccm", "get_matrix_terms", "is_col_reduced", "inverse_laplace_transform",
-           "simplify_conv_integrals", "substitute_non_state_terms"]
+           "simplify_conv_integrals", "substitute_non_state_terms", "build_hcf_state", "substitute_hcf_state"]
 
 # seed using the 'cat ran over the keyboard' method
 rng_seed = 56802470204575498132489694523498
@@ -596,10 +596,10 @@ def _substitute_non_state_lumped_term(expr, var, order, lower, upper):
 
     # substitute lumped term
     # print(f"Found incompatible term {expr}")
-    return _substitute_lower_derivative_lumped_delay(var, shift_degree, der_order, order, None, (lower, upper))
+    return _substitute_lower_derivative_lumped_delay(var, shift_degree, der_order, order, (lower, upper))
 
 
-def _substitute_lower_derivative_lumped_delay(var, shift_degree, der_order, max_der_order, kernel, bounds):
+def _substitute_lower_derivative_lumped_delay(var, shift_degree, der_order, max_der_order, bounds):
     time_sym = var.args[0]
     theta, sigma = sp.symbols("theta sigma")
     tau = shift_degree
@@ -609,15 +609,15 @@ def _substitute_lower_derivative_lumped_delay(var, shift_degree, der_order, max_
 
     res = 0
     for k in range(i, n):
-        der = var.subs(time_sym, theta).diff(theta, k).subs(theta, time_sym + tau_lo)
-        s1 = (tau - tau_lo) ** (k - i) / sp.factorial(k - i) * der
+        der = var.subs(time_sym, theta).diff(theta, k).subs(theta, time_sym - tau_lo)
+        s1 = (tau + tau_lo) ** (k - i) / sp.factorial(k - i) * der
 
         int_kernel = (tau - sigma) ** (n - i - 1) / sp.factorial(n - i - 1) * var.subs(time_sym, theta).diff(theta,
                                                                                                              n).subs(
             theta,
             time_sym + sigma)
 
-        s2 = sp.Integral(int_kernel, (sigma, tau_lo, tau_hi))
+        s2 = sp.Integral(int_kernel, (sigma, -tau_lo, tau_hi))
         res += s1 + s2
 
     # print(f"Replacing with {res}")
@@ -664,11 +664,13 @@ def _substitute_lower_derivative_distributed_delay(var, der_order, max_der_order
     for k in range(i, n):
         int1 = (tau_hi - tau) ** (k - i) * kernel
         i1 = sp.Integral(int1, (tau, tau_lo, tau_hi))
-        i1 *= (-1) * +(k - i) / sp.factorial(k - i) * var.subs(time_sym, theta).diff(theta, k).subs(theta, time_sym + tau_hi)
+        i1 *= (-1) * +(k - i) / sp.factorial(k - i) * var.subs(time_sym, theta).diff(theta, k).subs(theta,
+                                                                                                    time_sym + tau_hi)
 
         int2 = (tau - sigma) ** (n - i - 1) * kernel.subs(tau, sigma)
         i2 = sp.Integral(int2, (sigma, tau_lo, tau))
-        int3 = i2 * (-1) ** (n - 1) / sp.factorial(n - i - 1) * var.subs(time_sym, theta).diff(theta, n).subs(theta, time_sym + tau)
+        int3 = i2 * (-1) ** (n - 1) / sp.factorial(n - i - 1) * var.subs(time_sym, theta).diff(theta, n).subs(theta,
+                                                                                                              time_sym + tau)
         i3 = sp.Integral(int3, (tau, tau_lo, tau_hi))
         res += i1 + i3
 
@@ -712,3 +714,71 @@ def inverse_laplace_transform(expr, diff_sym, shift_sym, ana_sym):
             res += t_expr
 
     return res
+
+
+def build_hcf_state(y_vec, derivative_orders, shift_intervals):
+    y_eta_map = {}
+    eta_y_map = {}
+    hcf_vec = []
+    for i in range(len(y_vec)):
+        for j in range(1, derivative_orders[i] + 2):
+            if j <= derivative_orders[i]:
+                # lumped part
+                eta = sp.Function(f"\\eta^O_{{{ {i + 1}, {j} }}}")(t)
+                y = y_vec[i].diff(t, j - 1)
+            else:
+                # distributed part
+                eta = sp.Function(f"\\eta^P_{{{i + 1}}}")(tau, t)
+                y = y_vec[i].diff(t, j - 1).subs(t, t + shift_intervals[i][0] + tau)
+
+            eta_y_map[eta] = y
+            y_eta_map[y] = eta
+            hcf_vec.append(eta)
+
+    return sp.Matrix(hcf_vec), y_eta_map, eta_y_map
+
+
+def substitute_hcf_state(expr, mapping, temp_var, spat_var):
+    var_map = {}
+    for var in mapping.keys():
+        if isinstance(var, sp.Subs):
+            var_map[(var.args[0].args[0].name, var.args[0].args[1][1])] = var.args[2][0]
+        if isinstance(var, sp.Derivative):
+            var_map[(var.args[0].name, var.args[1][1])] = var.args[0].args[0]
+        if isinstance(var, AppliedUndef):
+            var_map[(var.name, 0)] = var.args[0]
+
+    def rec(_expr):
+        func = None
+        if isinstance(_expr, AppliedUndef):
+            func = _expr
+            der_order = 0
+        if isinstance(_expr, sp.Subs):
+            der = _expr.args[0]
+            if isinstance(der, sp.Derivative):
+                func = der.args[0].subs(zip(*_expr.args[1:]))
+                der_order = der.args[1][1]
+
+        if func is not None:
+            orig_arg = func.args[0]
+            subs_arg = var_map[(func.name, der_order)]
+            ref_func = func.func(temp_var).diff(temp_var, der_order).subs(temp_var, subs_arg)
+            rep_func = mapping[ref_func]
+            if len(rep_func.args) == 1:
+                arg_map = {temp_var: orig_arg}
+            elif len(rep_func.args) == 2:
+                d = sp.Dummy()
+                orig_arg = orig_arg.subs(spat_var, d)
+                spat_expr = sp.solve(orig_arg.subs(temp_var, subs_arg) - temp_var, spat_var)[0]
+                arg_map = {spat_var: spat_expr.subs(d, spat_var)}
+            else:
+                raise NotImplementedError
+
+            return rep_func.subs(arg_map)
+
+        new_args = tuple(rec(a) for a in _expr.args)
+        if new_args != _expr.args:
+            return _expr.func(*new_args)
+        return _expr
+
+    return rec(expr)
