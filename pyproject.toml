@@ -1,9 +1,18 @@
 [project]
 name = "iace-chimera"
 version = "0.1.0"
+authors = [
+  { name="Stefan Ecklebe", email="stefan.ecklebe@umit-tirol.at" },
+]
 description = "Computational Hyperbolic Input–output MIMO Equation Routines & Algebra"
 readme = "README.md"
 requires-python = ">=3.13"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license-expression = "GPL-3.0"
+license-file = "LICENSE"
 dependencies = [
     "numpy>=2.2.1",
     "scipy>=1.15.1",
@@ -13,17 +22,17 @@ dependencies = [
 [dependency-groups]
 dev = [
     "iace-chimera",
-    "pytest",
-    "pytest-cov",
+    "pytest>=9.0.0",
+    "pytest-cov>=7.0.0",
     "ruff>=0.14.9",
 ]
 
 [build-system]
-requires = ["uv_build>=0.8.22,<0.9.0"]
+requires = ["uv_build>=0.11.6,<0.12.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-    module-name = "chimera"
+module-name = "chimera"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
