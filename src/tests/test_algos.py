@@ -20,6 +20,7 @@ from chimera.utils import (
     check_singularities,
     is_col_reduced,
     random_poly_mat,
+    get_matrix_terms,
 )
 
 # generators
@@ -221,8 +222,9 @@ def test_reduce_matrix_shifts():
 
     sp.pprint(m, wrap_line=False)
     sp.pprint(m.applyfunc(lambda x: QPoly(x, sigma)), wrap_line=False)
-    l_cd, t_cd = get_column_degrees(m, sigma)
-    cd = [lcd - tcd for lcd, tcd in zip(l_cd, t_cd)]
+    (_, l_cd), (_, t_cd) = get_matrix_terms(m, sigma)
+    cds = l_cd - t_cd
+    cd = [max(cds[:, c]) for c in range(cds.shape[1])]
     print("Initial Column degrees:")
     sp.pprint(cd)
     orig_state_dim = sp.Add(*cd).simplify()
@@ -243,8 +245,9 @@ def test_reduce_matrix_shifts():
     print("Checking results:")
 
     # 1) all elements should have same degrees in each column
-    l_cd, t_cd = get_column_degrees(mrg, sigma)
-    cd = [lcd - tcd for lcd, tcd in zip(l_cd, t_cd)]
+    (_, l_cd), (_, t_cd) = get_matrix_terms(m, sigma)
+    cds = l_cd - t_cd
+    cd = [max(cds[:, c]) for c in range(cds.shape[1])]
     print("New column degrees:")
     sp.pprint(cd)
     new_state_dim = sp.Add(*cd).simplify()

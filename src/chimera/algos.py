@@ -580,8 +580,9 @@ def move_col_degrees_on_diagonal(
             "Properties not obtainable by reordering, Matrix is probably not column reduced."
         )
 
-    # sort entries first that only fit a few rows
     col_compat = list(zip(list(range(degs.cols)), r_compat))
+
+    # sort entries first that only fit a few rows
     col_compat.sort(key=lambda x: len(x[1]))
 
     # select columns
@@ -591,6 +592,7 @@ def move_col_degrees_on_diagonal(
         for r in adm_rs:
             if new_cols[r] is None:
                 new_cols[r] = c
+                # remove row for compatibility list and sort again
                 for i in range(len(col_compat)):
                     col_compat[i][1].discard(r)
                 col_compat.sort(key=lambda x: len(x[1]))
