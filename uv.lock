@@ -100,8 +100,8 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "iace-chimera" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
+    { name = "pytest", specifier = ">=9.0.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "ruff", specifier = ">=0.14.9" },
 ]
 

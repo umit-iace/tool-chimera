@@ -274,11 +274,18 @@ def test_move_col_degrees_on_diagonal():
     else:
         mat = sp.Matrix(
             [
-                [2 - 3 * s**2, 1, -5 * s**2 - 5],
-                [s**3 - s**2 - 5 * s + 5, -3 * s**2 + s - 1, 3 * s**2 - s - 5],
-                [s**3 - 4 * s**2 + 3 * s + 3, 1, -5 * s**2 + 3 * s + 4],
+                [
+                    5 * s**2 + s * (-4 * s - 3) / 5 + 3 * s - 1,
+                    -(s**3) - 2 * s**2 - 3 * s - 3,
+                    -4 * s - 3,
+                ],
+                [
+                    -(s**3) + s * (5 * s**2 - 1) / 5 - s - 4,
+                    3 * s**3 - 2 * s**2 - 5 * s - 3,
+                    5 * s**2 - 1,
+                ],
+                [s * (3 * s + 3) / 5 + 5 * s - 3, 4 * s**2 + 2 * s - 2, 3 * s + 3],
             ]
         )
-    # sp.pprint(mat)
     m, r_mat = move_col_degrees_on_diagonal(mat, s)
     assert check_col_degrees_on_diagonal(m, s)

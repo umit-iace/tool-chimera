@@ -586,14 +586,17 @@ def move_col_degrees_on_diagonal(
 
     # select columns
     new_cols = [None] * mat.cols
-    for r in range(mat.rows):
-        for idx, (c, adm_rs) in enumerate(col_compat):
-            if r in adm_rs:
+    for i in range(mat.cols):
+        c, adm_rs = col_compat[i]
+        for r in adm_rs:
+            if new_cols[r] is None:
                 new_cols[r] = c
+                for i in range(len(col_compat)):
+                    col_compat[i][1].discard(r)
+                col_compat.sort(key=lambda x: len(x[1]))
                 break
         else:
             raise ValueError
-        col_compat.pop(idx)
 
     # build permutation matrix
     perm = sp.combinatorics.Permutation(new_cols)
