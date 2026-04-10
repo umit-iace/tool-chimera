@@ -1,6 +1,6 @@
 import sympy as sp
 
-from chimera import GenPoly
+from chimera import QPoly
 
 # generators
 sigma = sp.Symbol("sigma", positive=True)
@@ -82,9 +82,9 @@ def test_dict_from_expr():
     for c in [case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
         for expr in f, g:
-            s_dict = GenPoly.dict_from_expr(expr, sigma)
+            s_dict = QPoly.dict_from_expr(expr, sigma)
             print(s_dict)
-            test_expr = GenPoly.dict_to_expr(s_dict, sigma)
+            test_expr = QPoly.dict_to_expr(s_dict, sigma)
             print(test_expr)
             err = expr - test_expr
             err = err.simplify()
@@ -92,13 +92,13 @@ def test_dict_from_expr():
 
 
 def test_add():
-    f = GenPoly(0, sigma)
+    f = QPoly(0, sigma)
     assert f + 1 == 1
 
     for c in [case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
-        fg = GenPoly(f, sigma)
-        gg = GenPoly(g, sigma)
+        fg = QPoly(f, sigma)
+        gg = QPoly(g, sigma)
         rg = fg + gg
         err = f + g - rg.as_expr()
         assert err.simplify() == 0
@@ -107,8 +107,8 @@ def test_add():
 def test_sub():
     for c in [case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
-        fg = GenPoly(f, sigma)
-        gg = GenPoly(g, sigma)
+        fg = QPoly(f, sigma)
+        gg = QPoly(g, sigma)
         rg = fg - gg
         err = f - g - rg.as_expr()
         assert err.simplify() == 0
@@ -117,8 +117,8 @@ def test_sub():
 def test_mul():
     for c in [case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
-        fg = GenPoly(f, sigma)
-        gg = GenPoly(g, sigma)
+        fg = QPoly(f, sigma)
+        gg = QPoly(g, sigma)
         rg = fg * gg
         err = f * g - rg.as_expr()
         assert err.simplify() == 0
@@ -127,8 +127,8 @@ def test_mul():
 def test_div():
     for c in [case_1, case_2, case_3, case_4, case_5, case_6]:
         f, g = c()
-        fg = GenPoly(f, sigma)
-        gg = GenPoly(g, sigma)
+        fg = QPoly(f, sigma)
+        gg = QPoly(g, sigma)
         rg = fg / gg.LM()
         err = fg - gg.LM() * rg
         assert err.as_expr().simplify() == 0
@@ -137,7 +137,7 @@ def test_div():
 def test_as_numer_denom():
     for c in [case_1, case_2, case_3, case_4, case_5, case_6]:
         for expr in c():
-            xp = GenPoly(expr, sigma)
+            xp = QPoly(expr, sigma)
             num, den = xp.as_numer_denom()
             print(f"Numerator: {num}, Denominator: {den}")
             err = num.as_expr() / den - expr

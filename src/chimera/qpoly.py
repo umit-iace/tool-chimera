@@ -5,10 +5,10 @@ import sympy as sp
 from sympy.core.exprtools import decompose_power_rat
 from sympy.core.numbers import S
 
-__all__ = ["GenPoly"]
+__all__ = ["QPoly"]
 
 
-class GenPoly(sp.Basic):
+class QPoly(sp.Basic):
     """
     Class to handle signomials, which are polynomials but with rational exponents
     """
@@ -17,8 +17,8 @@ class GenPoly(sp.Basic):
     is_GenPoly = True
 
     def __new__(cls, rep, *gens):
-        """Create a new generalized polynomial instance out of something useful."""
-        if isinstance(rep, GenPoly):
+        """Create a new generalised polynomial instance out of something useful."""
+        if isinstance(rep, QPoly):
             return cls.from_dict(rep.as_dict(), *gens)
         if isinstance(rep, dict):
             return cls.from_dict(rep, *gens)
@@ -27,7 +27,7 @@ class GenPoly(sp.Basic):
         elif isinstance(rep, sp.Add):
             # gp = next((o for o in rep.args if isinstance(rep, GenPoly)), None)
             # if gp is not None:
-            if any(isinstance(arg, GenPoly) for arg in rep.args):
+            if any(isinstance(arg, QPoly) for arg in rep.args):
                 return cls(reduce(lambda f, g: f + g, rep.args), *gens)
 
         # last resort
@@ -35,7 +35,7 @@ class GenPoly(sp.Basic):
         return cls.from_expr(rep, *gens)
 
     @classmethod
-    def from_gpoly(cls, expr, *gens: sp.Symbol):
+    def from_qpoly(cls, expr, *gens: sp.Symbol):
         return cls.from_dict(expr.as_dict(), *gens)
 
     @classmethod
@@ -108,21 +108,21 @@ class GenPoly(sp.Basic):
 
     def add_ground(f, g):
         if g == S.Zero:
-            return GenPoly(f, *f.gens)
+            return QPoly(f, *f.gens)
         rd = f.as_dict()
         c0 = rd.get(0, S.Zero) + g
         rd[0] = c0
-        return GenPoly.from_dict(rd, *f.gens)
+        return QPoly.from_dict(rd, *f.gens)
 
     def add(f, g):
         g = sp.sympify(g)
         if not f.rep:
             return g
-        if not isinstance(g, GenPoly):
+        if not isinstance(g, QPoly):
             if f.gen not in g.as_expr().free_symbols:
                 return f.add_ground(g)
             else:
-                g = GenPoly(g, *f.gens)
+                g = QPoly(g, *f.gens)
 
         # extract exponents
         fe = set(f.exponents())
@@ -138,11 +138,11 @@ class GenPoly(sp.Basic):
         rd.update({exp: fd[exp] for exp in f_only_exps})
         rd.update({exp: gd[exp] for exp in g_only_exps})
 
-        return GenPoly.from_dict(rd, f.gen)
+        return QPoly.from_dict(rd, f.gen)
 
     def neg(f):
         rd = {exp: -cff for exp, cff in f.as_dict().items()}
-        return GenPoly.from_dict(rd, f.gen)
+        return QPoly.from_dict(rd, f.gen)
 
     def sub(f, g):
         return f.add(-g)
@@ -153,16 +153,16 @@ class GenPoly(sp.Basic):
         for exp, cff in f.as_dict().items():
             rd[exp] = cff * g
 
-        return GenPoly.from_dict(rd, f.gen)
+        return QPoly.from_dict(rd, f.gen)
 
     def mul(f, g):
         g = sp.sympify(g)
         if g == S.Zero:
-            return GenPoly(0, *f.gens)
-        if not isinstance(g, GenPoly):
+            return QPoly(0, *f.gens)
+        if not isinstance(g, QPoly):
             if f.gen not in g.as_expr().free_symbols:
                 return f.mul_ground(g)
-            g = GenPoly(g, f.gen)
+            g = QPoly(g, f.gen)
 
         r_dict = {}
         for fd, fc in f.as_dict().items():
@@ -173,18 +173,18 @@ class GenPoly(sp.Basic):
                     r_dict[rd] += rc
                 else:
                     r_dict[rd] = rc
-        return GenPoly.from_dict(r_dict, f.gen)
+        return QPoly.from_dict(r_dict, f.gen)
 
     def div_ground(f, g):
         g = sp.sympify(g)
         rd = {}
         for exp, cff in f.as_dict().items():
             rd[exp] = cff / g
-        return GenPoly.from_dict(rd, f.gen)
+        return QPoly.from_dict(rd, f.gen)
 
     def div(f, g):
         g = sp.sympify(g)
-        if not isinstance(g, GenPoly):
+        if not isinstance(g, QPoly):
             if f.gen not in g.as_expr().free_symbols:
                 return f.div_ground(g)
 
@@ -208,7 +208,7 @@ class GenPoly(sp.Basic):
         denom = sp.lcm(c_denoms)
 
         nd = {exp: sp.cancel(cff * denom) for exp, cff in self.as_dict().items()}
-        numer = GenPoly.from_dict(nd, self.gen)
+        numer = QPoly.from_dict(nd, self.gen)
         return numer, denom
 
     def as_base_exp(self):
@@ -351,7 +351,7 @@ class GenPoly(sp.Basic):
 
     def LM(self, s_dict: dict = None):
         """Return the Leading monom"""
-        return GenPoly.from_list([(self.degmax(), self.rep[self.degmax()])], self.gen)
+        return QPoly.from_list([(self.degmax(), self.rep[self.degmax()])], self.gen)
 
     def LC(self, s_dict: dict = None) -> sp.Expr:
         """Return the Leading coefficient"""

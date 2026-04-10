@@ -1,4 +1,4 @@
 from .algos import *
-from .genpoly import *
+from .qpoly import *
 from .poly import *
 from .utils import *

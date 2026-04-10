@@ -3,7 +3,7 @@ import pickle
 import sympy as sp
 import pytest
 
-from chimera import GenPoly
+from chimera import QPoly
 from chimera.algos import (
     reduce_matrix_shifts,
     gpld,
@@ -41,8 +41,8 @@ def test_gpld():
 
     for x, y in zip(xl, yl):
         print(f"Dividing {x} by {y}:")
-        xp = GenPoly(x, sigma)
-        yp = GenPoly(y, sigma)
+        xp = QPoly(x, sigma)
+        yp = QPoly(y, sigma)
         qp, rp = gpld(xp, yp, sigma)
         r = rp.as_expr()
         q = qp.as_expr()
@@ -66,7 +66,7 @@ def test_make_entire():
     ]
     for expr in exprs:
         print(f"Testing {expr}:")
-        gp = GenPoly(expr, sigma)
+        gp = QPoly(expr, sigma)
         egp, p = make_entire(gp, s)
 
         print("Checking for singularities in quotient and remainder:")
@@ -107,8 +107,8 @@ def test_gplde():
     ]
     for x, y in zip(xl, yl):
         print(f"Dividing {x} by {y}:")
-        xp = GenPoly(x, sigma)
-        yp = GenPoly(y, sigma)
+        xp = QPoly(x, sigma)
+        yp = QPoly(y, sigma)
         qep, rep = gplde(xp, yp, s)
         qe = qep.as_expr()
         re = rep.as_expr()
@@ -186,11 +186,11 @@ def test_reduce_matrix_shifts():
     # pde part
     if 0:
         # non-rational exponents cause parsing errors
-        tau_m = [sp.prime(2*n+1) for n in range(nm)]
-        tau_p = [-sp.prime(2*n+2) for n in range(np)]
+        tau_m = [sp.prime(2 * n + 1) for n in range(nm)]
+        tau_p = [-sp.prime(2 * n + 2) for n in range(np)]
     else:
-        tau_m = [sp.Rational(1,sp.prime(2*n+1)) for n in range(nm)]
-        tau_p = [-sp.Rational(1,sp.prime(2*n+2)) for n in range(np)]
+        tau_m = [sp.Rational(1, sp.prime(2 * n + 1)) for n in range(nm)]
+        tau_p = [-sp.Rational(1, sp.prime(2 * n + 2)) for n in range(np)]
     pred_mat = sp.Matrix.diag([sigma**tau for tau in tau_m])
     delay_mat = sp.Matrix.diag([sigma**tau for tau in tau_p])
     des_state_dim = (sp.Add(*tau_m) - sp.Add(*tau_p)).simplify()
@@ -209,7 +209,7 @@ def test_reduce_matrix_shifts():
         # 2x2 cases:
         q0_mat = sp.Matrix([[-1, 1], [0, 1]])
         q1_mat = sp.Matrix([[0, -1], [-1, 0]])
-    elif nm ==3 and np == 2:
+    elif nm == 3 and np == 2:
         # q0_mat = sp.Matrix([[1, 1, 0], [0, -1, 1]])
         # q1_mat = sp.Matrix([[-1, 0], [0, -1], [-1, 1]])
         q0_mat = sp.Matrix([[-1, 0, 0], [0, -1, -1]])
@@ -220,7 +220,7 @@ def test_reduce_matrix_shifts():
     l, m, r = canonical_form(m, s, sigma)
 
     sp.pprint(m, wrap_line=False)
-    sp.pprint(m.applyfunc(lambda x: GenPoly(x, sigma)), wrap_line=False)
+    sp.pprint(m.applyfunc(lambda x: QPoly(x, sigma)), wrap_line=False)
     l_cd, t_cd = get_column_degrees(m, sigma)
     cd = [lcd - tcd for lcd, tcd in zip(l_cd, t_cd)]
     print("Initial Column degrees:")

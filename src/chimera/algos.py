@@ -7,7 +7,7 @@ from typing import Union, Tuple, Any
 import sympy as sp
 
 from .poly import echelon_form, column_reduced_form
-from .genpoly import GenPoly
+from .qpoly import QPoly
 from .utils import (
     get_matrix_terms,
     get_leading_term_matrix,
@@ -130,8 +130,8 @@ def bezouts(
     eliminating all denominators in the equation thus making a and b
     polynomials.
     """
-    lcm_a = GenPoly(a, s_gen).get_coeff_denom_lcm()
-    lcm_b = GenPoly(b, s_gen).get_coeff_denom_lcm()
+    lcm_a = QPoly(a, s_gen).get_coeff_denom_lcm()
+    lcm_b = QPoly(b, s_gen).get_coeff_denom_lcm()
     lcm = sp.lcm(lcm_a, lcm_b)
     # print("LCM of bezout coefficients:")
     # print(lcm)
@@ -327,10 +327,10 @@ def hermite_form(mat: sp.Matrix, p_gen: sp.Symbol, s_gen: sp.Symbol):
 
 
 def gpld(
-    x: Union[GenPoly],
-    y: Union[GenPoly],
+    x: Union[QPoly],
+    y: Union[QPoly],
     verbose: bool = False,
-) -> tuple[GenPoly, GenPoly]:
+) -> tuple[QPoly, QPoly]:
     """
     Perform generalized polynomial long division
 
@@ -342,14 +342,14 @@ def gpld(
         support division.
 
     Args:
-        x (GenPoly): Expression to be divided
-        y (GenPoly): Expression to divide by
+        x (QPoly): Expression to be divided
+        y (QPoly): Expression to divide by
         verbose (bool): If True, be verbose about what steps are taken
 
     Returns:
         Tuple (q,r) of generalized quotient polynomial and remainder.
     """
-    if not isinstance(x, GenPoly) or not isinstance(y, GenPoly):
+    if not isinstance(x, QPoly) or not isinstance(y, QPoly):
         raise ValueError("Only arguments of type GenPoly supported")
     assert x.gen == y.gen
     assert y != 0
@@ -357,7 +357,7 @@ def gpld(
     y_dmax = y.degmax()
     y_dmin = y.degmin()
 
-    q = GenPoly(0, x.gen)
+    q = QPoly(0, x.gen)
     r = x
     while True:
         r_dmax = r.degmax()
@@ -386,7 +386,7 @@ def gpld(
             q_kd = {(r_dmin - y_dmin): r.TC() / y.TC()}
         else:
             break
-        q_k = GenPoly.from_dict(q_kd, y.gen)
+        q_k = QPoly.from_dict(q_kd, y.gen)
 
         r = r - q_k * y
         q += q_k
@@ -395,11 +395,11 @@ def gpld(
 
 
 def make_entire(
-    expr: GenPoly,
+    expr: QPoly,
     rat_sym: sp.Symbol,
     gen_expr: sp.Expr = None,
     verbose: bool = False,
-) -> GenPoly:
+) -> QPoly:
     """
     Convert a generalised polynomial in *sig_gen* with rational coefficients
     in *sym* into a version without singularities
@@ -408,7 +408,7 @@ def make_entire(
     Laplace transform of a shift operator with compact support.
 
     Args:
-        expr (GenPoly): Expression to work on
+        expr (QPoly): Expression to work on
         rat_sym (sp.Symbol): Free variable of the rational coefficients
         gen_expr (sp.Expr): Expression in sym, that will be substituted for *gp_gen*
 
@@ -433,7 +433,7 @@ def make_entire(
     rts = sp.roots(p_den, rat_sym)
 
     # start without denominator and iteratively add zeroes
-    egp = GenPoly(num / lc, gen_expr)
+    egp = QPoly(num / lc, gen_expr)
     for r, m in rts.items():
         if verbose:
             print(f"Lifting root at {rat_sym}={r} with multiplicity {m}")
@@ -459,11 +459,11 @@ def make_entire(
 
 
 def gplde(
-    x: Union[GenPoly],
-    y: Union[GenPoly],
+    x: Union[QPoly],
+    y: Union[QPoly],
     c_gen: sp.Symbol,
     verbose: bool = False,
-) -> tuple[GenPoly, GenPoly]:
+) -> tuple[QPoly, QPoly]:
     """
     Perform  modified generalized polynomial long division
 
@@ -474,8 +474,8 @@ def gplde(
         Care is taken, such that the resulting q and r remain whole functions
 
     Args:
-        x (GenPoly): Expression to be divided
-        y (GenPoly): Expression to divide by
+        x (QPoly): Expression to be divided
+        y (QPoly): Expression to divide by
         c_gen (sp.Symbol): Generator of the coefficient polynomials
         verbose (bool): If True, be verbose about what steps are taken
 
@@ -493,8 +493,8 @@ def gplde(
 def get_column_reduction_transform(mat, col, p_gen, gp_gen=None):
     l_mat = sp.Matrix.eye(mat.shape[0])
     for i in range(col + 1, mat.shape[0]):
-        x = GenPoly(mat[i, col], gp_gen)
-        y = GenPoly(mat[col, col], gp_gen)
+        x = QPoly(mat[i, col], gp_gen)
+        y = QPoly(mat[col, col], gp_gen)
         # x = mat[i, col]
         # y = mat[col, col]
         qe, re = gplde(x, y, p_gen)
@@ -518,7 +518,7 @@ def reduce_matrix_shifts(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol) ->
             l_mat = lc @ l_mat
             if 0:
                 # gp_mat = gp_mat.applyfunc(sp.simplify)
-                gp_mat = gp_mat.applyfunc(lambda x: GenPoly(x, gp_gen))
+                gp_mat = gp_mat.applyfunc(lambda x: QPoly(x, gp_gen))
                 # gp_mat = gp_mat.applyfunc(lambda x: GenPoly(x, gp_gen).as_expr())
             # l_mat = (lc @ l_mat).applyfunc(lambda x: GenPoly(x, gp_gen))
 
@@ -647,9 +647,9 @@ def eliminate_delays_ur_post(
     """
     r_mat = sp.Matrix.eye(mat.shape[1])
     for r in range(mat.shape[0]):
-        pivot = GenPoly(mat[r, r], s_gen)
+        pivot = QPoly(mat[r, r], s_gen)
         for c in range(r + 1, mat.shape[1]):
-            elem = GenPoly(mat[r, c], s_gen)
+            elem = QPoly(mat[r, c], s_gen)
             quo, rem = gplde(elem, pivot, p_gen)
             r_mat[r, c] = -quo.as_expr()
     res = mat @ r_mat

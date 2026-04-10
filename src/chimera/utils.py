@@ -10,7 +10,7 @@ from sympy import random_poly
 from sympy.core.random import seed
 from sympy.core.function import AppliedUndef
 
-from .genpoly import GenPoly
+from .qpoly import QPoly
 
 __all__ = [
     "check_singularities",
@@ -54,7 +54,7 @@ def get_coeffs(expr: sp.Expr, gen: sp.Symbol) -> dict:
     Helper function to return the coefficients of different powers
     of *gen* in *expr*.
     """
-    s = GenPoly(expr, gen)
+    s = QPoly(expr, gen)
     c = s.as_dict()
     return c
 
@@ -167,7 +167,7 @@ def get_term(
         Tuple of coefficient and exponent for the selected mode.
     """
 
-    def _handle_gpoly(_gp: GenPoly):
+    def _handle_gpoly(_gp: QPoly):
         lc = _gp.LC()
         ld = _gp.degmax()
         tc = _gp.TC()
@@ -208,7 +208,7 @@ def get_term(
         return (lc, ld), (tc, td)
 
     # maybe it is a generalised polynomial?
-    if isinstance(e, GenPoly):
+    if isinstance(e, QPoly):
         if e.gen == sym:
             return _handle_gpoly(e)
         else:
@@ -231,7 +231,7 @@ def get_term(
         return _handle_rational(np, dp)
 
     # last resort, try to parse as generalized polynomial
-    p = GenPoly(e, sym)
+    p = QPoly(e, sym)
     return _handle_gpoly(p)
 
 
@@ -384,8 +384,8 @@ def check_singularities(
     Returns:
         False if expr contains singularities, True otherwise.
     """
-    if not isinstance(expr, GenPoly):
-        expr = GenPoly(expr, gp_sym)
+    if not isinstance(expr, QPoly):
+        expr = QPoly(expr, gp_sym)
     num, den = expr.as_numer_denom()
     poles = sp.roots(den, rat_sym)
     for p, m in poles.items():
@@ -701,7 +701,7 @@ def inverse_laplace_transform(expr, diff_sym, shift_sym, ana_sym):
     """
     # extract the normalised common polynomial denominator
     nrs, drs = expr.together(shift_sym).as_numer_denom()
-    drs_qp = GenPoly(drs, shift_sym)
+    drs_qp = QPoly(drs, shift_sym)
     assert len(drs_qp.exponents()) == 1
     d_lc = shift_sym ** drs_qp.degmax() * sp.Poly(drs_qp.LC(), diff_sym).LC()
     nn = (nrs / d_lc).simplify()
@@ -712,7 +712,7 @@ def inverse_laplace_transform(expr, diff_sym, shift_sym, ana_sym):
     assert err == 0
 
     # collect the shifts
-    nn_qp = GenPoly(nn, shift_sym)
+    nn_qp = QPoly(nn, shift_sym)
 
     # perform partial fraction decomposition of the common poles
     d_pfd = (1 / dn).apart()

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import sympy as sp
 
-from chimera import GenPoly
+from chimera import QPoly
 from chimera.utils import (
     check_prediction_condition,
     check_delay_condition,
@@ -21,7 +21,7 @@ def test_get_coeff():
     sigma = sp.symbols("sigma", positive=True)
 
     sig_dict = {a: 4 * s + 2, b: 3 * s, -2 * a: 5 * s**2, b + b: 3 * s}
-    f = GenPoly.from_dict(sig_dict, sigma).as_expr()
+    f = QPoly.from_dict(sig_dict, sigma).as_expr()
     c = get_coeffs(f, sigma)
     assert sig_dict == c
 
