@@ -1,6 +1,7 @@
 """
 Utility functions
 """
+
 from random import randint
 
 import numpy as np
@@ -11,8 +12,17 @@ from sympy.core.function import AppliedUndef
 
 from .genpoly import GenPoly
 
-__all__ = ["check_singularities", "get_lccm", "get_matrix_terms", "is_col_reduced", "inverse_laplace_transform",
-           "simplify_conv_integrals", "substitute_non_state_terms", "build_hcf_state", "substitute_hcf_state"]
+__all__ = [
+    "check_singularities",
+    "get_lccm",
+    "get_matrix_terms",
+    "is_col_reduced",
+    "inverse_laplace_transform",
+    "simplify_conv_integrals",
+    "substitute_non_state_terms",
+    "build_hcf_state",
+    "substitute_hcf_state",
+]
 
 # seed using the 'cat ran over the keyboard' method
 rng_seed = 56802470204575498132489694523498
@@ -50,7 +60,7 @@ def get_coeffs(expr: sp.Expr, gen: sp.Symbol) -> dict:
 
 
 def get_matrix_coeffs(
-        mat: sp.Matrix, gen: sp.Symbol, exponents_only=False
+    mat: sp.Matrix, gen: sp.Symbol, exponents_only=False
 ) -> list[list[dict]]:
     coeffs = []
     for j in range(mat.rows):
@@ -107,7 +117,7 @@ def get_matrix_terms(mat, sym, subs: dict = None):
 
 
 def get_leading_column_degrees(
-        mat: sp.Matrix, sym: sp.Symbol, subs: dict = None
+    mat: sp.Matrix, sym: sp.Symbol, subs: dict = None
 ) -> list:
     """
     Extract the highest degrees of each column
@@ -118,7 +128,7 @@ def get_leading_column_degrees(
 
 
 def get_trailing_column_degrees(
-        mat: sp.Matrix, sym: sp.Symbol, subs: dict = None
+    mat: sp.Matrix, sym: sp.Symbol, subs: dict = None
 ) -> list:
     """
     Extract the smallest degrees of each column
@@ -139,7 +149,7 @@ def get_column_degrees(mat: sp.Matrix, sym: sp.Symbol, subs: dict = None) -> lis
 
 
 def get_term(
-        e: sp.Expr, sym: sp.Symbol
+    e: sp.Expr, sym: sp.Symbol
 ) -> tuple[tuple[sp.Expr, sp.Expr], tuple[sp.Expr, sp.Expr]]:
     """
     Extract the leading coefficient of some expression
@@ -318,9 +328,9 @@ def check_delay_condition(mat, delay_sym, diff_sym):
 
 def check_all_conds(mat, pred_sym, delay_sym, diff_sym):
     return (
-            check_derivative_condition(mat, diff_sym)
-            and check_prediction_condition(mat, pred_sym, diff_sym)
-            and check_delay_condition(mat, delay_sym, diff_sym)
+        check_derivative_condition(mat, diff_sym)
+        and check_prediction_condition(mat, pred_sym, diff_sym)
+        and check_delay_condition(mat, delay_sym, diff_sym)
     )
 
 
@@ -355,11 +365,11 @@ def check_equal(expr1, expr2, n=10, positive=False, strictly_positive=False):
 
 
 def check_singularities(
-        expr: sp.Expr,
-        rat_sym: sp.Symbol,
-        gp_sym: sp.Symbol,
-        gp_expr: sp.Expr,
-        verbose: bool = False,
+    expr: sp.Expr,
+    rat_sym: sp.Symbol,
+    gp_sym: sp.Symbol,
+    gp_expr: sp.Expr,
+    verbose: bool = False,
 ):
     """
     Check if denominator zeroes are numerator zeroes as well
@@ -367,7 +377,7 @@ def check_singularities(
     Args:
         expr: Expression to check
         rat_sym: Generator of rational expressions
-        gp_sym: Generator of generalized polynomials
+        gp_sym: Generator of generalised polynomials
         gp_expr: Expression to use for *gp_sym*
         verbose: Be verbose
 
@@ -390,7 +400,9 @@ def check_singularities(
 
 
 def random_poly_mat(m, n, order, c_min, c_max, p_gen):
-    mat = sp.Matrix([random_poly(p_gen, randint(0, order), c_min, c_max) for i in range(m * n)]).reshape(m, n)
+    mat = sp.Matrix(
+        [random_poly(p_gen, randint(0, order), c_min, c_max) for i in range(m * n)]
+    ).reshape(m, n)
     return mat
 
 
@@ -460,10 +472,6 @@ def _simplify_conv(kernel, var, lower, upper):
     # identify applied undefined functions that are being convolved
     c_funcs = kernel.atoms(AppliedUndef)
 
-    # # collect expressions concerning them
-    # col_kernel = kernel.collect(c_funcs)
-    # display(col_kernel)
-
     # treat each function separately
     for func in c_funcs:
         factor = kernel.expand().coeff(func)
@@ -477,9 +485,6 @@ def _simplify_conv(kernel, var, lower, upper):
 def _simplify_conv_factor(factor, var, lower, upper):
     res = []
 
-    # display(factor)
-
-    # start with isolated dirichlet deltas
     dir_factors = 0
     hea_factors = {}
     rem_factors = 0
@@ -487,11 +492,9 @@ def _simplify_conv_factor(factor, var, lower, upper):
         if term.has(sp.DiracDelta) and not term.has(sp.Heaviside):
             dir_factors += term
         elif term.has(sp.Heaviside):
-            # display(term)
             f = term.atoms(sp.Heaviside)
             assert len(f) == 1
             f = list(f)[0]
-            # display(f)
             c = (term / f).simplify()
             if c in hea_factors:
                 hea_factors[c] += [f]
@@ -503,7 +506,7 @@ def _simplify_conv_factor(factor, var, lower, upper):
         else:
             rem_factors += term
 
-    # just re-add the Diracs, sympy will simplify them
+    # just re-add the diracs, sympy will simplify them
     res.append((dir_factors, (var, lower, upper)))
 
     # continue with heavyside expressions
@@ -556,7 +559,9 @@ def substitute_non_state_terms(expr, var, order, lower, upper):
             # lumped case
             return _substitute_non_state_lumped_term(expr, var, order, lower, upper)
 
-    new_args = tuple(substitute_non_state_terms(a, var, order, lower, upper) for a in expr.args)
+    new_args = tuple(
+        substitute_non_state_terms(a, var, order, lower, upper) for a in expr.args
+    )
     if new_args != expr.args:
         return expr.func(*new_args)
     return expr
@@ -591,10 +596,14 @@ def _substitute_non_state_lumped_term(expr, var, order, lower, upper):
 
     # substitute lumped term
     # print(f"Found incompatible term {expr}")
-    return _substitute_lower_derivative_lumped_delay(var, shift_degree, der_order, order, (lower, upper))
+    return _substitute_lower_derivative_lumped_delay(
+        var, shift_degree, der_order, order, (lower, upper)
+    )
 
 
-def _substitute_lower_derivative_lumped_delay(var, shift_degree, der_order, max_der_order, bounds):
+def _substitute_lower_derivative_lumped_delay(
+    var, shift_degree, der_order, max_der_order, bounds
+):
     time_sym = var.args[0]
     theta, sigma = sp.symbols("theta sigma")
     tau = shift_degree
@@ -607,10 +616,11 @@ def _substitute_lower_derivative_lumped_delay(var, shift_degree, der_order, max_
         der = var.subs(time_sym, theta).diff(theta, k).subs(theta, time_sym - tau_lo)
         s1 = (tau + tau_lo) ** (k - i) / sp.factorial(k - i) * der
 
-        int_kernel = (tau - sigma) ** (n - i - 1) / sp.factorial(n - i - 1) * var.subs(time_sym, theta).diff(theta,
-                                                                                                             n).subs(
-            theta,
-            time_sym + sigma)
+        int_kernel = (
+            (tau - sigma) ** (n - i - 1)
+            / sp.factorial(n - i - 1)
+            * var.subs(time_sym, theta).diff(theta, n).subs(theta, time_sym + sigma)
+        )
 
         s2 = sp.Integral(int_kernel, (sigma, -tau_lo, tau_hi))
         res += s1 + s2
@@ -644,10 +654,14 @@ def _substitute_non_state_distributed_term(expr, var, order):
 
     # substitute the integral
     # print(f"Found incompatible term {expr}")
-    return _substitute_lower_derivative_distributed_delay(var, der_order, order, conv_kernel, int_bounds)
+    return _substitute_lower_derivative_distributed_delay(
+        var, der_order, order, conv_kernel, int_bounds
+    )
 
 
-def _substitute_lower_derivative_distributed_delay(var, der_order, max_der_order, kernel, bounds):
+def _substitute_lower_derivative_distributed_delay(
+    var, der_order, max_der_order, kernel, bounds
+):
     theta, sigma = sp.symbols("theta sigma")
     time_sym = var.args[0]
 
@@ -659,13 +673,21 @@ def _substitute_lower_derivative_distributed_delay(var, der_order, max_der_order
     for k in range(i, n):
         int1 = (tau_hi - tau) ** (k - i) * kernel
         i1 = sp.Integral(int1, (tau, tau_lo, tau_hi))
-        i1 *= (-1) * +(k - i) / sp.factorial(k - i) * var.subs(time_sym, theta).diff(theta, k).subs(theta,
-                                                                                                    time_sym + tau_hi)
+        i1 *= (
+            (-1)
+            * +(k - i)
+            / sp.factorial(k - i)
+            * var.subs(time_sym, theta).diff(theta, k).subs(theta, time_sym + tau_hi)
+        )
 
         int2 = (tau - sigma) ** (n - i - 1) * kernel.subs(tau, sigma)
         i2 = sp.Integral(int2, (sigma, tau_lo, tau))
-        int3 = i2 * (-1) ** (n - 1) / sp.factorial(n - i - 1) * var.subs(time_sym, theta).diff(theta, n).subs(theta,
-                                                                                                              time_sym + tau)
+        int3 = (
+            i2
+            * (-1) ** (n - 1)
+            / sp.factorial(n - i - 1)
+            * var.subs(time_sym, theta).diff(theta, n).subs(theta, time_sym + tau)
+        )
         i3 = sp.Integral(int3, (tau, tau_lo, tau_hi))
         res += i1 + i3
 
@@ -674,6 +696,9 @@ def _substitute_lower_derivative_distributed_delay(var, der_order, max_der_order
 
 
 def inverse_laplace_transform(expr, diff_sym, shift_sym, ana_sym):
+    """
+    Helper function to help sympy compute the inverse laplace transform
+    """
     # extract the normalised common polynomial denominator
     nrs, drs = expr.together(shift_sym).as_numer_denom()
     drs_qp = GenPoly(drs, shift_sym)
@@ -691,27 +716,30 @@ def inverse_laplace_transform(expr, diff_sym, shift_sym, ana_sym):
 
     # perform partial fraction decomposition of the common poles
     d_pfd = (1 / dn).apart()
-    # display(d_pfd)
 
     res = 0
     for term in sp.Add.make_args(d_pfd):
         for exp, coeff in nn_qp.as_dict().items():
-            if 0:
-                # Laplace transform of sympy does not know how the handle shifts
+            """
+            Sadly, sympy's inverse laplace transform  does not know how the handle 
+            shifts, so instead of doing:
                 s_expr = term * coeff * sp.exp(s * exp)
-            else:
-                # so we perform the shift manually
-                s_expr = term * coeff
-                t_expr = sp.inverse_laplace_transform(s_expr, diff_sym, ana_sym
-                                                      ).subs(ana_sym, ana_sym + exp)
-            # display(s_expr)
-            # display(t_expr)
+            we add the manually.
+            """
+            s_expr = term * coeff
+            t_expr = sp.inverse_laplace_transform(s_expr, diff_sym, ana_sym).subs(
+                ana_sym, ana_sym + exp
+            )
             res += t_expr
 
     return res
 
 
 def build_hcf_state(y_vec, derivative_orders, shift_intervals, temp_var, spat_var):
+    """
+    Compute the hyperbolic MIMO controller form state
+    including the corresponding substitution maps to use it
+    """
     y_eta_map = {}
     eta_y_map = {}
     hcf_vec = []
@@ -724,7 +752,11 @@ def build_hcf_state(y_vec, derivative_orders, shift_intervals, temp_var, spat_va
             else:
                 # distributed part
                 eta = sp.Function(f"\\eta^P_{{{i + 1}}}")(spat_var, temp_var)
-                y = y_vec[i].diff(temp_var, j - 1).subs(temp_var, temp_var + shift_intervals[i][0] + spat_var)
+                y = (
+                    y_vec[i]
+                    .diff(temp_var, j - 1)
+                    .subs(temp_var, temp_var + shift_intervals[i][0] + spat_var)
+                )
 
             eta_y_map[eta] = y
             y_eta_map[y] = eta
@@ -734,6 +766,13 @@ def build_hcf_state(y_vec, derivative_orders, shift_intervals, temp_var, spat_va
 
 
 def substitute_hcf_state(expr, mapping, temp_var, spat_var):
+    """
+    Substitute the hyperbolic MIMO controller form state into a FDE in the
+    system input and flat output
+
+    Basically this just helps sympy to recognise derivatives of functions with different
+    argument names.
+    """
     var_map = {}
     for var in mapping.keys():
         if isinstance(var, sp.Subs):
@@ -760,7 +799,9 @@ def substitute_hcf_state(expr, mapping, temp_var, spat_var):
             if subs_arg is None:
                 return _expr
 
-            ref_func = func.func(temp_var).diff(temp_var, der_order).subs(temp_var, subs_arg)
+            ref_func = (
+                func.func(temp_var).diff(temp_var, der_order).subs(temp_var, subs_arg)
+            )
             rep_func = mapping[ref_func]
             if len(rep_func.args) == 1:
                 arg_map = {temp_var: orig_arg}
