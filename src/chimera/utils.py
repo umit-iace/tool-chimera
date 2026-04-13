@@ -207,7 +207,7 @@ def get_term(
                 tc = _tc
         return (lc, ld), (tc, td)
 
-    # maybe it is a generalised polynomial?
+    # maybe it is a quasipolynomial?
     if isinstance(e, QPoly):
         if e.gen == sym:
             return _handle_gpoly(e)
@@ -225,12 +225,12 @@ def get_term(
         return _handle_poly(p)
 
     # maybe it is a rational expression?
-    num, den = e.as_numer_denom()
-    if num.is_polynomial(sym) and den.is_polynomial(sym):
+    if e.is_rational_function(sym):
+        num, den = e.as_numer_denom()
         np, dp = [sp.Poly(expr, sym) for expr in (num, den)]
         return _handle_rational(np, dp)
 
-    # last resort, try to parse as generalized polynomial
+    # last resort, try to parse as quasipolynomial
     p = QPoly(e, sym)
     return _handle_gpoly(p)
 

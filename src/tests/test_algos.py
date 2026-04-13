@@ -126,8 +126,8 @@ def test_gplde():
         print(f"error: {err}")
         assert err == 0
 
-        print("Checking for singularities in remainder:")
-        # TODO speed this check up so that we can acutally test it
+        # TODO speed this check up so that we can actually test it
+        # print("Checking for singularities in remainder:")
         # check_singularities(rep, s, sigma, sp.exp(s), verbose=True)
 
 
@@ -135,6 +135,7 @@ def test_reduce_matrix_shifts():
     nm = n = 2
     np = 2
     rand = False
+    # rand = True
 
     # ode part
     if rand:
@@ -143,18 +144,19 @@ def test_reduce_matrix_shifts():
         d_mat, _ = move_col_degrees_on_diagonal(m, s)
         print(d_mat)
     elif nm == 2:
-        d_mat = sp.Matrix(
-            [
-                [3 * s / 5 + 2, sp.Rational(4, 3)],
-                [
-                    -3 * s**2
-                    + 9 * s * (20 * s / 3 + sp.Rational(19, 3)) / 20
-                    - 2 * s
-                    - 1,
-                    20 * s / 3 + sp.Rational(19, 3),
-                ],
-            ]
-        )
+        # d_mat = sp.Matrix(
+        #     [
+        #         [3 * s / 5 + 2, sp.Rational(4, 3)],
+        #         [
+        #             -3 * s**2
+        #             + 9 * s * (20 * s / 3 + sp.Rational(19, 3)) / 20
+        #             - 2 * s
+        #             - 1,
+        #             20 * s / 3 + sp.Rational(19, 3),
+        #         ],
+        #     ]
+        # )
+        d_mat = sp.Matrix([[-3*s**2 - 4*s + 1, -4], [4*s**2 + 5*s - 5, 3 - 2*s]])
     elif nm == 3:
         d_mat = sp.Matrix(
             [
@@ -189,13 +191,19 @@ def test_reduce_matrix_shifts():
         # non-rational exponents cause parsing errors
         tau_m = [sp.prime(2 * n + 1) for n in range(nm)]
         tau_p = [-sp.prime(2 * n + 2) for n in range(np)]
+    elif 1:
+        tau_m = [sp.Rational(1, sp.prime(2 * n + 1)) for n in range(nm)][::-1]
+        tau_p = [-sp.Rational(1, sp.prime(2 * n + 2)) for n in range(np)][::-1]
     else:
-        tau_m = [sp.Rational(1, sp.prime(2 * n + 1)) for n in range(nm)]
-        tau_p = [-sp.Rational(1, sp.prime(2 * n + 2)) for n in range(np)]
+        tau_m = [sp.prime(2 * n + 1) for n in range(nm)]
+        tau_p = [-sp.prime(2 * n + 2) for n in range(np)]
     pred_mat = sp.Matrix.diag([sigma**tau for tau in tau_m])
     delay_mat = sp.Matrix.diag([sigma**tau for tau in tau_p])
     des_state_dim = (sp.Add(*tau_m) - sp.Add(*tau_p)).simplify()
-    print(f"Desired state dim: {des_state_dim}")
+    print(f"System predictions: {tau_m}")
+    print(f"System delays: {tau_p}")
+    print(f"Original state dimensions {[tm - tp for tm,tp in zip(tau_m, tau_p)]}")
+    print(f"Original full state dim: {des_state_dim}")
 
     if rand:
         q0_mat = sp.Matrix.zeros(np, nm)
@@ -208,8 +216,10 @@ def test_reduce_matrix_shifts():
         print(q1_mat)
     elif nm == np == 2:
         # 2x2 cases:
-        q0_mat = sp.Matrix([[-1, 1], [0, 1]])
-        q1_mat = sp.Matrix([[0, -1], [-1, 0]])
+        # q0_mat = sp.Matrix([[-1, 1], [0, 1]])
+        # q1_mat = sp.Matrix([[0, -1], [-1, 0]])
+        q0_mat = sp.Matrix([[0, -1], [-1, -1]])
+        q1_mat = sp.Matrix([[0, 1], [1, -1]])
     elif nm == 3 and np == 2:
         # q0_mat = sp.Matrix([[1, 1, 0], [0, -1, 1]])
         # q1_mat = sp.Matrix([[-1, 0], [0, -1], [-1, 1]])
@@ -227,8 +237,19 @@ def test_reduce_matrix_shifts():
     cd = [max(cds[:, c]) for c in range(cds.shape[1])]
     print("Initial Column degrees:")
     sp.pprint(cd)
-    orig_state_dim = sp.Add(*cd).simplify()
-    print(f"Initial state dimension {orig_state_dim}")
+    init_state_dim = sp.Add(*cd).simplify()
+    print(f"Initial state dimension {init_state_dim}")
+
+    print("Homogenising delays")
+    mean_delta = sum(t_cd[:,0]) / m.shape[0]
+    l1 = sp.Matrix.diag([sigma**(mean_delta - di) for di in t_cd[:,0]])
+    sp.pprint(l1)
+    sp.pprint(l1.det())
+    m = l1 @ m
+    m.simplify()
+    sp.pprint(m, wrap_line=False)
+    sp.pprint(m.applyfunc(lambda x: QPoly(x, sigma)), wrap_line=False)
+
     if 0:
         try:
             with open("tmp.pkl", "rb") as f:
@@ -241,11 +262,13 @@ def test_reduce_matrix_shifts():
     else:
         mrg, lg = reduce_matrix_shifts(m, s, sigma)
     sp.pprint(mrg, wrap_line=False)
+    mq = mrg.applyfunc(lambda x: QPoly(x, sigma))
+    sp.pprint(mq, wrap_line=False)
 
     print("Checking results:")
 
     # 1) all elements should have same degrees in each column
-    (_, l_cd), (_, t_cd) = get_matrix_terms(m, sigma)
+    (_, l_cd), (_, t_cd) = get_matrix_terms(mrg, sigma)
     cds = l_cd - t_cd
     cd = [max(cds[:, c]) for c in range(cds.shape[1])]
     print("New column degrees:")
