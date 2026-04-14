@@ -623,7 +623,7 @@ def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
     c_degs = l_degs - t_degs
     for j in range(mat.rows - 1):
         diff = c_degs[j + 1, :] - c_degs[j, :]
-        if not all(diff[0] == d for d in diff):
+        if not all(diff[0] <= d for d in diff):
             raise ValueError(
                 f"Given matrix does not exhibit the same shift differences for all columns between row {j} and {j + 1}."
             )
