@@ -1,4 +1,5 @@
 import pickle
+import random
 
 import sympy as sp
 import pytest
@@ -12,7 +13,7 @@ from chimera.algos import (
     column_reduced_form,
     canonical_form,
     move_col_degrees_on_diagonal,
-    check_col_degrees_on_diagonal,
+    check_col_degrees_on_diagonal, eliminate_delays,
 )
 from chimera.utils import (
     get_column_degrees,
@@ -140,8 +141,7 @@ def test_reduce_matrix_shifts():
     # ode part
     if rand:
         m = random_poly_mat(n, n, n, -5, 5, s)
-        m, _ = column_reduced_form(m, s)
-        d_mat, _ = move_col_degrees_on_diagonal(m, s)
+        d_mat, _ = column_reduced_form(m, s)
         print(d_mat)
     elif nm == 2:
         # d_mat = sp.Matrix(
@@ -156,7 +156,9 @@ def test_reduce_matrix_shifts():
         #         ],
         #     ]
         # )
-        d_mat = sp.Matrix([[-3*s**2 - 4*s + 1, -4], [4*s**2 + 5*s - 5, 3 - 2*s]])
+        # d_mat = sp.Matrix([[-3*s**2 - 4*s + 1, -4], [4*s**2 + 5*s - 5, 3 - 2*s]])
+        # n_mat = sp.Matrix([[1, 0], [s, 0], [0, 1], [0, s]])
+        d_mat = sp.Matrix([[-2*s - 4, -5*s - 1], [-16*s - 10, 3*s**2 - 4*s + 5]])
     elif nm == 3:
         d_mat = sp.Matrix(
             [
@@ -185,18 +187,24 @@ def test_reduce_matrix_shifts():
                 [-2, 4, -2 * s**2 + 4 * s / 3 - 1],
             ]
         )
+    assert is_col_reduced(d_mat, s)
+    n_mat = sp.Matrix.zeros(n, nm)
+    c_mat = sp.Matrix.zeros(np, n)
+    h_mat = d_mat + c_mat @ n_mat
 
     # pde part
-    if 0:
-        # non-rational exponents cause parsing errors
-        tau_m = [sp.prime(2 * n + 1) for n in range(nm)]
-        tau_p = [-sp.prime(2 * n + 2) for n in range(np)]
-    elif 1:
-        tau_m = [sp.Rational(1, sp.prime(2 * n + 1)) for n in range(nm)][::-1]
-        tau_p = [-sp.Rational(1, sp.prime(2 * n + 2)) for n in range(np)][::-1]
+    if rand:
+        tau_m = sorted([sp.sqrt(2*random.randint(1, 10)+1) for n in range(nm)])
+        tau_p = sorted([-sp.sqrt(2*random.randint(1, 10)+1) for n in range(np)])[::-1]
     else:
-        tau_m = [sp.prime(2 * n + 1) for n in range(nm)]
-        tau_p = [-sp.prime(2 * n + 2) for n in range(np)]
+        # tau_m = [sp.Rational(1, sp.prime(2 * n + 1)) for n in range(nm)][::-1]
+        # tau_p = [-sp.Rational(1, sp.prime(2 * n + 2)) for n in range(np)][::-1]
+        # tau_m = [sp.prime(2 * n + 1) for n in range(nm)]
+        # tau_p = [-sp.prime(2 * n + 2) for n in range(np)]
+        # tau_m = [sp.sqrt(15).evalf(), sp.sqrt(21).evalf()]
+        # tau_p = [-sp.sqrt(13).evalf(), -sp.sqrt(21).evalf()]
+        tau_m = [sp.sqrt(15), sp.sqrt(21)]
+        tau_p = [-sp.sqrt(13), -sp.sqrt(21)]
     pred_mat = sp.Matrix.diag([sigma**tau for tau in tau_m])
     delay_mat = sp.Matrix.diag([sigma**tau for tau in tau_p])
     des_state_dim = (sp.Add(*tau_m) - sp.Add(*tau_p)).simplify()
@@ -218,8 +226,10 @@ def test_reduce_matrix_shifts():
         # 2x2 cases:
         # q0_mat = sp.Matrix([[-1, 1], [0, 1]])
         # q1_mat = sp.Matrix([[0, -1], [-1, 0]])
-        q0_mat = sp.Matrix([[0, -1], [-1, -1]])
-        q1_mat = sp.Matrix([[0, 1], [1, -1]])
+        # q0_mat = sp.Matrix([[0, -1], [-1, -1]])
+        # q1_mat = sp.Matrix([[0, 1], [1, -1]])
+        q0_mat = sp.Matrix([[1, 1], [0, -1]])
+        q1_mat = sp.Matrix([[-1, -1], [-1, 1]])
     elif nm == 3 and np == 2:
         # q0_mat = sp.Matrix([[1, 1, 0], [0, -1, 1]])
         # q1_mat = sp.Matrix([[-1, 0], [0, -1], [-1, 1]])
@@ -227,7 +237,13 @@ def test_reduce_matrix_shifts():
         q1_mat = sp.Matrix([[-1, -1], [-1, 1], [-1, 0]])
 
     # g matrix
-    m = pred_mat @ d_mat - q1_mat @ delay_mat @ q0_mat @ d_mat
+    m = pred_mat @ d_mat - q1_mat @ delay_mat @ q0_mat @ h_mat
+    sp.pprint(m.applyfunc(lambda x: QPoly(x, sigma)), wrap_line=False)
+
+    if 0:
+        he, re, rei = eliminate_delays(h_mat, delay_mat, s, sigma)
+        m = m @ re
+
     l, m, r = canonical_form(m, s, sigma)
 
     sp.pprint(m, wrap_line=False)
@@ -240,30 +256,46 @@ def test_reduce_matrix_shifts():
     init_state_dim = sp.Add(*cd).simplify()
     print(f"Initial state dimension {init_state_dim}")
 
-    print("Homogenising delays")
-    mean_delta = sum(t_cd[:,0]) / m.shape[0]
-    l1 = sp.Matrix.diag([sigma**(mean_delta - di) for di in t_cd[:,0]])
-    sp.pprint(l1)
-    sp.pprint(l1.det())
-    m = l1 @ m
-    m.simplify()
-    sp.pprint(m, wrap_line=False)
-    sp.pprint(m.applyfunc(lambda x: QPoly(x, sigma)), wrap_line=False)
+    if 1:
+        print("Homogenising predictions")
+        mean_pred = sum(tau_m) / len(tau_m)
+        print(f"Mean prediction: {mean_pred}")
+        l1 = sp.Matrix.diag([sigma**(mean_pred - ri) for ri in tau_m])
+        print("Hom transform:")
+        sp.pprint(l1)
+        print("Hom transform determinant:")
+        sp.pprint(l1.det().simplify())
+        m = l1 @ m
+        m.simplify()
+        print("Hom result:")
+        sp.pprint(m, wrap_line=False)
+        mq = m.applyfunc(lambda x: QPoly(x, sigma))
+        sp.pprint(mq, wrap_line=False)
+        sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
+        sp.pprint(mq.applyfunc(lambda x: (x.degmin(), x.degmax()) ), wrap_line=False)
 
-    if 0:
-        try:
-            with open("tmp.pkl", "rb") as f:
-                mrg = pickle.load(f)
-        except FileNotFoundError:
-            mrg, lg = reduce_matrix_shifts(m, s, sigma)
-
-        with open("tmp.pkl", "wb") as f:
-            pickle.dump(mrg, f)
-    else:
-        mrg, lg = reduce_matrix_shifts(m, s, sigma)
+    # reduction
+    print("Reduction results:")
+    mrg, lg = reduce_matrix_shifts(m, s, sigma)
     sp.pprint(mrg, wrap_line=False)
     mq = mrg.applyfunc(lambda x: QPoly(x, sigma))
     sp.pprint(mq, wrap_line=False)
+    sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
+    sp.pprint(mq.applyfunc(lambda x: (x.degmin(), x.degmax())), wrap_line=False)
+
+    if 1:
+        print("Round 2")
+        l2, m2, r2 = canonical_form(mrg, s, sigma)
+        mq = m2.applyfunc(lambda x: QPoly(x, sigma))
+        sp.pprint(mq, wrap_line=False)
+        sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
+        sp.pprint(mq.applyfunc(lambda x: (x.degmin(), x.degmax()) ), wrap_line=False)
+        mrg2, lg2 = reduce_matrix_shifts(mq.applyfunc(lambda x: x.as_expr()), s, sigma)
+        mq = mrg2.applyfunc(lambda x: QPoly(x, sigma))
+        sp.pprint(mq, wrap_line=False)
+        sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
+        sp.pprint(mq.applyfunc(lambda x: (x.degmin(), x.degmax()) ), wrap_line=False)
+        mrg = mrg2
 
     print("Checking results:")
 
