@@ -15,7 +15,7 @@ from .utils import (
     is_col_reduced,
 )
 
-__all__ = ["gpld", "make_entire", "gplde", "eliminate_delays", "reduce_matrix_shifts"]
+__all__ = ["qpld", "make_entire", "qplde", "eliminate_delays", "reduce_matrix_shifts"]
 
 
 def gcdexs(
@@ -34,7 +34,7 @@ def gcdexs(
 
     idx = 1
     while idx < max_iterations + 1:
-        q, r = gplde(h[idx - 1], h[idx], gp_gen)
+        q, r = qplde(h[idx - 1], h[idx], gp_gen)
         q = q.as_expr()
 
         if r == 0:
@@ -326,15 +326,15 @@ def hermite_form(mat: sp.Matrix, p_gen: sp.Symbol, s_gen: sp.Symbol):
     return mt, u_mat, ui_mat
 
 
-def gpld(
+def qpld(
     x: Union[QPoly],
     y: Union[QPoly],
     verbose: bool = False,
 ) -> tuple[QPoly, QPoly]:
     """
-    Perform generalized polynomial long division
+    Perform quasipolynomial long division
 
-    This function will compute generalized polynomials  q and r,
+    This function will compute quasipolynomials  q and r,
     such that x = qy +r with deg(r) < deg(y).
 
     Note:
@@ -347,7 +347,7 @@ def gpld(
         verbose (bool): If True, be verbose about what steps are taken
 
     Returns:
-        Tuple (q,r) of generalized quotient polynomial and remainder.
+        Tuple (q,r) of quotient quasipolynomial and remainder.
     """
     if not isinstance(x, QPoly) or not isinstance(y, QPoly):
         raise ValueError("Only arguments of type GenPoly supported")
@@ -458,16 +458,16 @@ def make_entire(
     return expr + p, p
 
 
-def gplde(
+def qplde(
     x: Union[QPoly],
     y: Union[QPoly],
     c_gen: sp.Symbol,
     verbose: bool = False,
 ) -> tuple[QPoly, QPoly]:
     """
-    Perform  modified generalized polynomial long division
+    Perform  modified quasipolynomial long division
 
-    This function will compute generalized polynomials q and r,
+    This function will compute  quasipolynomials q and r,
     such that x = qy +r with deg(r) = deg(y).
 
     Note:
@@ -480,9 +480,9 @@ def gplde(
         verbose (bool): If True, be verbose about what steps are taken
 
     Returns:
-        Tuple (q,r) of generalized quotient polynomial and remainder.
+        Tuple (q,r) of quotient quasipolynomial and remainder.
     """
-    q, r = gpld(x, y, verbose)
+    q, r = qpld(x, y, verbose)
     if q.is_zero:
         return q, r
     qe, p = make_entire(q, c_gen)
@@ -497,7 +497,7 @@ def get_column_reduction_transform(mat, col, p_gen, gp_gen=None):
         y = QPoly(mat[col, col], gp_gen)
         # x = mat[i, col]
         # y = mat[col, col]
-        qe, re = gplde(x, y, p_gen)
+        qe, re = qplde(x, y, p_gen)
         l_mat[i, col] = -qe.as_expr()
         # l_mat[i, col] = -qe
     return l_mat
@@ -655,7 +655,7 @@ def eliminate_delays_ur_post(
         pivot = QPoly(mat[r, r], s_gen)
         for c in range(r + 1, mat.shape[1]):
             elem = QPoly(mat[r, c], s_gen)
-            quo, rem = gplde(elem, pivot, p_gen)
+            quo, rem = qplde(elem, pivot, p_gen)
             r_mat[r, c] = -quo.as_expr()
     res = mat @ r_mat
     res.simplify()

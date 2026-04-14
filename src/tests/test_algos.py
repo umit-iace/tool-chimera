@@ -6,9 +6,9 @@ import pytest
 from chimera import QPoly
 from chimera.algos import (
     reduce_matrix_shifts,
-    gpld,
+    qpld,
     make_entire,
-    gplde,
+    qplde,
     column_reduced_form,
     canonical_form,
     move_col_degrees_on_diagonal,
@@ -44,7 +44,7 @@ def test_gpld():
         print(f"Dividing {x} by {y}:")
         xp = QPoly(x, sigma)
         yp = QPoly(y, sigma)
-        qp, rp = gpld(xp, yp, sigma)
+        qp, rp = qpld(xp, yp, sigma)
         r = rp.as_expr()
         q = qp.as_expr()
         print(f"q: {q}")
@@ -110,7 +110,7 @@ def test_gplde():
         print(f"Dividing {x} by {y}:")
         xp = QPoly(x, sigma)
         yp = QPoly(y, sigma)
-        qep, rep = gplde(xp, yp, s)
+        qep, rep = qplde(xp, yp, s)
         qe = qep.as_expr()
         re = rep.as_expr()
         # print(f"q: {qe}")

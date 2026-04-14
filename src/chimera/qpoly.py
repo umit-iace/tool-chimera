@@ -101,10 +101,10 @@ class QPoly(sp.Basic):
         return f.mul(g ** (-1))
 
     def __str__(self):
-        return str(f"GenPoly({self.exponents()}, {self.gen})")
+        return str(f"QPoly({self.exponents()}, {self.gen})")
 
     def __repr__(self):
-        return str(f"GenPoly({self.exponents()}, {self.gen})")
+        return str(f"QPoly({self.exponents()}, {self.gen})")
 
     def add_ground(f, g):
         if g == S.Zero:
