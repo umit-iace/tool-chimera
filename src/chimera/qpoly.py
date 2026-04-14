@@ -110,9 +110,8 @@ class QPoly(sp.Basic):
         if g == S.Zero:
             return QPoly(f, *f.gens)
         rd = f.as_dict()
-        c0 = rd.get(0, S.Zero) + g
-        rd[0] = c0
-        return QPoly.from_dict(rd, *f.gens)
+        c0 = {0: rd.get(0, S.Zero) + g}
+        return QPoly.from_dict(rd | c0, *f.gens)
 
     def add(f, g):
         g = sp.sympify(g)
@@ -192,7 +191,8 @@ class QPoly(sp.Basic):
         return f.as_expr() / g.as_expr()
 
     def as_dict(self) -> dict:
-        return self.rep
+        # TODO copy is a hack to get rid of side effects
+        return self.rep.copy()
 
     def _eval_is_polynomial(self, gens):
         return False
