@@ -13,7 +13,8 @@ from chimera.algos import (
     column_reduced_form,
     canonical_form,
     move_col_degrees_on_diagonal,
-    check_col_degrees_on_diagonal, eliminate_delays,
+    check_col_degrees_on_diagonal,
+    homogenise_leading_shifts
 )
 from chimera.utils import (
     get_column_degrees,
@@ -142,6 +143,7 @@ def test_reduce_matrix_shifts():
     if rand:
         m = random_poly_mat(n, n, n, -5, 5, s)
         d_mat, _ = column_reduced_form(m, s)
+        print("ODE Input parametrisation matrix:")
         print(d_mat)
     elif nm == 2:
         # d_mat = sp.Matrix(
@@ -195,8 +197,8 @@ def test_reduce_matrix_shifts():
 
     # pde part
     if rand:
-        tau_m = sorted([sp.sqrt(2*random.randint(1, 10)+1) for n in range(nm)])
-        tau_p = sorted([-sp.sqrt(2*random.randint(1, 10)+1) for n in range(np)])[::-1]
+        tau_m = sorted([sp.sqrt(2*random.randint(1, 100)+1) for n in range(nm)])
+        tau_p = sorted([-sp.sqrt(2*random.randint(1, 100)+1) for n in range(np)])[::-1]
     else:
         # tau_m = [sp.Rational(1, sp.prime(2 * n + 1)) for n in range(nm)][::-1]
         # tau_p = [-sp.Rational(1, sp.prime(2 * n + 2)) for n in range(np)][::-1]
@@ -221,11 +223,9 @@ def test_reduce_matrix_shifts():
         q0_mat = sp.Matrix.zeros(np, nm)
         while q0_mat.rank() < np:
             q0_mat = sp.randMatrix(np, nm, -10, 10)
-        print(q0_mat)
         q1_mat = sp.Matrix.zeros(nm, np)
         while q1_mat.rank() < np:
             q1_mat = sp.randMatrix(nm, np, -10, 10)
-        print(q1_mat)
     elif nm == np == 2:
         # 2x2 cases:
         # q0_mat = sp.Matrix([[-1, 1], [0, 1]])
@@ -241,9 +241,13 @@ def test_reduce_matrix_shifts():
         # q1_mat = sp.Matrix([[-1, 0], [0, -1], [-1, 1]])
         q0_mat = sp.Matrix([[-1, 0, 0], [0, -1, -1]])
         q1_mat = sp.Matrix([[-1, -1], [-1, 1], [-1, 0]])
+    print("PDE boundary matrices Q0 and Q1")
+    print(q0_mat)
+    print(q1_mat)
 
     # g matrix
     m = pred_mat @ d_mat - q1_mat @ delay_mat @ q0_mat @ h_mat
+    print("G Matrix:")
     # sp.pprint(m, wrap_line=False)
     mq = m.applyfunc(lambda x: QPoly(x, sigma))
     sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
@@ -257,32 +261,12 @@ def test_reduce_matrix_shifts():
     init_state_dim = sp.Add(*cd).simplify()
     print(f"Initial state dimension: {init_state_dim}")
 
-    if 1:
-        print("Pre Trafo:")
-        L,U,p = q1_mat[:,::-1].LUdecomposition()
-        m = L.inv() @ m
-        mq = m.applyfunc(lambda x: QPoly(x, sigma))
-        sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
-        sp.pprint(mq.applyfunc(lambda x: (x.degmin(), x.degmax())), wrap_line=False)
-
-        print("Homogenising:")
-        tv = tau_m
-        # tv = tau_p
-        mean = sum(tv) / len(tv)
-        print(f"Mean: {mean}")
-        l1 = sp.Matrix.diag([sigma**(mean - ri) for ri in tv])
-        print("Hom transform:")
-        sp.pprint(l1)
-        print("Hom transform determinant:")
-        sp.pprint(l1.det().simplify())
-        m = l1 @ m
-        m.simplify()
-        print("Hom result:")
-        # sp.pprint(m, wrap_line=False)
-        mq = m.applyfunc(lambda x: QPoly(x, sigma))
-        # sp.pprint(mq, wrap_line=False)
-        sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
-        sp.pprint(mq.applyfunc(lambda x: (x.degmin(), x.degmax()) ), wrap_line=False)
+    print("Pre Trafo:")
+    L,U,p = q1_mat[:,::-1].LUdecomposition()
+    m = L.inv() @ m
+    mq = m.applyfunc(lambda x: QPoly(x, sigma))
+    sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
+    sp.pprint(mq.applyfunc(lambda x: (x.degmin(), x.degmax())), wrap_line=False)
 
     l, m, r = canonical_form(m, s, sigma)
     print("In canonical form:")
@@ -290,12 +274,13 @@ def test_reduce_matrix_shifts():
     sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
     sp.pprint(mq.applyfunc(lambda x: (x.degmin(), x.degmax())), wrap_line=False)
 
-    print("Reduction results:")
     mrg, lg = reduce_matrix_shifts(m, s, sigma)
-    mq = mrg.applyfunc(lambda x: QPoly(x, sigma))
+
+    print("Reduction results:")
+    # mq = mrg.applyfunc(lambda x: QPoly(x, sigma))
     # sp.pprint(mq, wrap_line=False)
-    sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
-    sp.pprint(mq.applyfunc(lambda x: (x.degmin(), x.degmax())), wrap_line=False)
+    # sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
+    # sp.pprint(mq.applyfunc(lambda x: (x.degmin(), x.degmax())), wrap_line=False)
 
     print("Checking results:")
 
@@ -324,9 +309,11 @@ def test_reduce_matrix_shifts():
 
 
 def test_move_col_degrees_on_diagonal():
+    # print()
     if 1:
         rand_mat = random_poly_mat(3, 3, 3, -5, 5, s)
         mat, _ = column_reduced_form(rand_mat, s)
+        print(mat)
     else:
         mat = sp.Matrix(
             [
@@ -344,8 +331,17 @@ def test_move_col_degrees_on_diagonal():
             ]
         )
     m, r_mat = move_col_degrees_on_diagonal(mat, s)
+    # sp.pprint(r_mat)
+    # sp.pprint(r_mat)
+    # sp.pprint(get_lccm(m, s))
     assert check_col_degrees_on_diagonal(m, s)
 
+
+def test_sor_cols_random():
+    for k in range(100):
+        test_move_col_degrees_on_diagonal()
+
+
 def test_red_shifts_random():
-    while True:
+    for k in range(100):
         test_reduce_matrix_shifts()

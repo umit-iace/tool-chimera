@@ -12,7 +12,6 @@ from .utils import (
     get_matrix_terms,
     get_leading_term_matrix,
     factor_diag_post,
-    is_col_reduced,
 )
 
 __all__ = ["qpld", "make_entire", "qplde", "eliminate_delays", "reduce_matrix_shifts"]
@@ -503,7 +502,9 @@ def get_column_reduction_transform(mat, col, p_gen, gp_gen=None):
     return l_mat
 
 
-def reduce_matrix_shifts(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol) -> Tuple[sp.Matrix, sp.Matrix]:
+def reduce_matrix_shifts(
+    mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol
+) -> Tuple[sp.Matrix, sp.Matrix]:
     # gp_mat = mat.applyfunc(lambda x: GenPoly(x, gp_gen))
     gp_mat = mat.copy()
     check_canonical_form(gp_mat, p_gen, gp_gen)
@@ -530,10 +531,16 @@ def canonical_form(
 ) -> Tuple[sp.Matrix, sp.Matrix, sp.Matrix]:
     """
     Apply row and colum permutations to bring mat into canonical form
+
+    In Detail:
+    * Sort rows such that the shift intervals are ascending
+    * Sort columns such that the highest poly degrees appear on the main diagonal
+    * Homogenise the leading row delays
     """
     m, l_mat = sort_shift_intervals(mat, gp_gen)
     m, r_mat = move_col_degrees_on_diagonal(m, p_gen)
-    return l_mat, m, r_mat
+    m, hom_trafo = homogenise_leading_shifts(m, gp_gen, mode="delay")
+    return hom_trafo @ l_mat, m, r_mat
 
 
 def sort_shift_intervals(
@@ -607,6 +614,22 @@ def move_col_degrees_on_diagonal(
     return mat @ r_mat, r_mat
 
 
+def homogenise_leading_shifts(mat, q_gen, mode):
+    (_, ld), (_, td) = get_matrix_terms(mat, q_gen)
+    if mode == "delay":
+        r_degs = [min(td[r, :]) for r in range(mat.shape[0])]
+    elif mode == "pred":
+        r_degs = [max(ld[r, :]) for r in range(mat.shape[0])]
+    else:
+        raise ValueError(f"Unknown mode {mode}")
+
+    mean = sum(r_degs) / len(r_degs)
+    l_mat = sp.Matrix.diag([q_gen ** (mean - rd) for rd in r_degs])
+    mh = l_mat @ mat
+    mh.simplify()
+    return mh, l_mat
+
+
 def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
     """
     Check if a matrix m is in canonical form
@@ -618,19 +641,20 @@ def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
     # 1: highest derivatives on the main diagonal
     check_col_degrees_on_diagonal(mat, p_gen)
 
-    # 2: shift degrees are increasing row-wise
+    # 2: shifts
     (l_cffs, l_degs), (t_cffs, t_degs) = get_matrix_terms(mat, gp_gen)
-    c_degs = l_degs - t_degs
-    for j in range(mat.rows - 1):
-        diff = c_degs[j + 1, :] - c_degs[j, :]
-        if not all(diff[0] <= d for d in diff):
-            raise ValueError(
-                f"Given matrix does not exhibit the same shift differences for all columns between row {j} and {j + 1}."
-            )
-        if diff[0] < 0:
-            raise ValueError(
-                f"Given matrix does not exhibit increasing shift intervals in between row {j} and {j + 1}."
-            )
+    s_degs = l_degs - t_degs
+    row_degs = [max(s_degs[r,:]) for r in range(mat.shape[0])]
+    row_degs_m = [min(t_degs[r,:]) for r in range(mat.shape[0])]
+    row_degs_p = [max(l_degs[r,:]) for r in range(mat.shape[0])]
+
+    # 2a: leading delays of each row must be the same
+    if not all(row_degs_m[0] == rd for rd in row_degs_m):
+        raise ValueError("Leading row delays are not equal. Homogenise first.")
+
+    # 2b: leading shifts of each row must be ascending
+    if not sorted(row_degs):
+        raise ValueError("Leading row shift intervals must be ascending.")
 
 
 def check_col_degrees_on_diagonal(mat: sp.Matrix, p_gen: sp.Symbol) -> Any:
