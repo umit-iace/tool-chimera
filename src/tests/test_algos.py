@@ -292,39 +292,35 @@ def test_reduce_matrix_shifts():
 
 
 def test_move_col_degrees_on_diagonal():
-    # print()
-    if 1:
-        rand_mat = random_poly_mat(3, 3, 3, -5, 5, s)
-        mat, _ = column_reduced_form(rand_mat, s)
-        print(mat)
-    else:
-        mat = sp.Matrix(
+    mats = []
+
+    # add manual reproducers
+    mat = sp.Matrix(
+        [
             [
-                [
-                    5 * s**2 + s * (-4 * s - 3) / 5 + 3 * s - 1,
-                    -(s**3) - 2 * s**2 - 3 * s - 3,
-                    -4 * s - 3,
-                ],
-                [
-                    -(s**3) + s * (5 * s**2 - 1) / 5 - s - 4,
-                    3 * s**3 - 2 * s**2 - 5 * s - 3,
-                    5 * s**2 - 1,
-                ],
-                [s * (3 * s + 3) / 5 + 5 * s - 3, 4 * s**2 + 2 * s - 2, 3 * s + 3],
-            ]
-        )
-    m, r_mat = move_col_degrees_on_diagonal(mat, s)
-    # sp.pprint(r_mat)
-    # sp.pprint(r_mat)
-    # sp.pprint(get_lccm(m, s))
-    assert check_col_degrees_on_diagonal(m, s)
+                5 * s ** 2 + s * (-4 * s - 3) / 5 + 3 * s - 1,
+                -(s ** 3) - 2 * s ** 2 - 3 * s - 3,
+                -4 * s - 3,
+            ],
+            [
+                -(s ** 3) + s * (5 * s ** 2 - 1) / 5 - s - 4,
+                3 * s ** 3 - 2 * s ** 2 - 5 * s - 3,
+                5 * s ** 2 - 1,
+            ],
+            [s * (3 * s + 3) / 5 + 5 * s - 3, 4 * s ** 2 + 2 * s - 2, 3 * s + 3],
+        ]
+    )
+    mats.append(mat)
 
+    # add some random ones
+    for k in range(1, 5):
+        rand_mat = random_col_reduced_mat(k, k, k, -10, 10, s)
+        mats.append(rand_mat)
 
-def test_sor_cols_random():
-    for k in range(100):
-        test_move_col_degrees_on_diagonal()
+    def _run_test(_m):
+        print(_m)
+        res, r_mat = move_col_degrees_on_diagonal(_m, s)
+        assert check_col_degrees_on_diagonal(res, s)
 
-
-def test_red_shifts_random():
-    for k in range(100):
-        test_reduce_matrix_shifts()
+    for m in mats:
+        _run_test(m)
