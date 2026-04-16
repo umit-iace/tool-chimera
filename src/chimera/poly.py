@@ -1,12 +1,19 @@
+import random as rd
+from typing import Iterable
+
 import numpy as np
 import sympy as sp
-from sympy import Matrix, Basic, poly
+from sympy import Matrix, Basic, poly, random_poly
 from sympy.polys.domains import QQ, EX
 from sympy.polys.matrices import DomainMatrix
 from sympy.polys.polytools import Poly
 
-
-from .utils import is_col_reduced, get_lccm, get_leading_column_degrees
+from .utils import (
+    is_col_reduced,
+    get_lccm,
+    get_leading_column_degrees,
+    random_partition_m_parts,
+)
 
 __all__ = ["echelon_form", "column_reduced_form"]
 
@@ -478,3 +485,34 @@ def column_reduced_form(
         )
 
     return m, u
+
+
+def random_poly_mat(m, n, order, c_min, c_max, p_gen):
+    if isinstance(order, Iterable):
+        assert len(order) == n
+    else:
+        order = [order] * n
+
+    mat = sp.Matrix.zeros(m, n)
+    for j in range(n):
+        cd_max = order[j]
+        # generate orders for all columns
+        cds = [rd.randint(0, cd_max) for i in range(m)]
+        if cd_max not in cds:
+            # guarantee that the maximum degree is present
+            cds[rd.randint(0, m - 1)] = cd_max
+        for i in range(m):
+            mat[i, j] = random_poly(p_gen, cds[i], c_min, c_max)
+    return mat
+
+
+def random_col_reduced_mat(m, n, coldeg_sum, c_min, c_max, p_gen):
+    cds = random_partition_m_parts(coldeg_sum, n)
+    while True:
+        mat = random_poly_mat(m, n, cds, c_min, c_max, p_gen)
+        try:
+            mat, _ = column_reduced_form(mat, p_gen)
+        except ValueError:
+            continue
+        break
+    return mat

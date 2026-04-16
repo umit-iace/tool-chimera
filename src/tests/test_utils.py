@@ -11,7 +11,9 @@ from chimera.utils import (
     get_leading_column_degrees,
     get_leading_term_matrix,
     get_lccm,
-    is_col_reduced, factor_diag_pre, factor_diag_post,
+    is_col_reduced,
+    factor_diag_pre,
+    factor_diag_post,
 )
 from chimera.poly import column_reduced_form
 
@@ -244,7 +246,7 @@ def test_generate_transform():
 
 
 def test_factor_diag():
-    h_mat = sp.MatrixSymbol("H", 5 ,5).as_explicit()
+    h_mat = sp.MatrixSymbol("H", 5, 5).as_explicit()
     del_mat = sp.Matrix.diag(sp.symbols("d_{:5}"))
 
     # test it

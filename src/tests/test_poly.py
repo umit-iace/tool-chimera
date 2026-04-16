@@ -8,8 +8,8 @@ from chimera.poly import (
     is_in_echelon_form,
     column_reduced_form,
     is_col_reduced,
+    random_poly_mat,
 )
-from chimera.utils import random_poly_mat
 
 
 def test_echelon_form():
@@ -177,6 +177,7 @@ def test_column_reduced_form():
             bad.append(mat)
 
     def _red_col(m):
+        print(m)
         red, r = column_reduced_form(m, s)
         assert is_col_reduced(red, s)
 

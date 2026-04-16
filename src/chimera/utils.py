@@ -2,11 +2,9 @@
 Utility functions
 """
 import random as rd
-from collections.abc import Iterable
 
 import numpy as np
 import sympy as sp
-from sympy import random_poly
 from sympy.core.random import seed, shuffle
 from sympy.core.function import AppliedUndef
 from sympy.utilities.iterables import ordered_partitions
@@ -408,25 +406,6 @@ def check_singularities(
                 return False
     else:
         return True
-
-
-def random_poly_mat(m, n, order, c_min, c_max, p_gen):
-    if isinstance(order, Iterable):
-        assert len(order) == n
-    else:
-        order = [order] * n
-
-    mat = sp.Matrix.zeros(m, n)
-    for j in range(n):
-        cd_max = order[j]
-        # generate orders for all columns
-        cds = [rd.randint(0, cd_max) for i in range(m)]
-        if cd_max not in cds:
-            # guarantee that the maximum degree is present
-            cds[rd.randint(0, m-1)] = cd_max
-        for i in range(m):
-                mat[i,j] = random_poly(p_gen, cds[i], c_min, c_max)
-    return mat
 
 
 def zero_lower_left(mat):
