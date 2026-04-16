@@ -197,14 +197,24 @@ def get_term(
     def _handle_coefficients(_p, sym):
         ld = 0
         td = sp.S.Infinity
-        for c in _p.coefficients():
+        lc = tc = 0
+        for e, c in _p.as_dict().items():
             (_lc, _ld), (_tc, _td) = get_term(c, sym)
-            if _ld >= ld:
+
+            _lc *= _p.gen ** e
+            if _ld == ld:
+                lc += _lc
+            elif _ld > ld:
                 ld = _ld
                 lc = _lc
-            if _td <= td:
+
+            _tc *= _p.gen ** e
+            if _td == td:
+                tc += _tc
+            elif _td < td:
                 td = _td
                 tc = _tc
+
         return (lc, ld), (tc, td)
 
     # maybe it is a quasipolynomial?
