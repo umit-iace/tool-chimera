@@ -117,51 +117,74 @@ def test_is_in_row_hermite_form():
 
 def test_column_reduced_form():
     s = sp.Symbol("s")
-    if 1:
-        mat = sp.Matrix(
+    good = []
+    bad = []
+    mat = sp.Matrix(
+        [
             [
-                [
-                    4 * s**2 + 2 * s - 2,
-                    s - 4,
-                    5 * s**3 - 2 * s**2 - 4 * s + 3,
-                    -3 * s**4 - 5 * s**3 - 2 * s**2 - 5 * s - 1,
-                    4,
-                    -5 * s**3 - 3 * s**2 + 4,
-                ],
-                [
-                    -4,
-                    5 * s**4 - 2 * s**3 + 5 * s**2 - 4 * s - 4,
-                    -3 * s - 3,
-                    4,
-                    -4 * s - 1,
-                    3 * s - 5,
-                ],
-                [
-                    -4 * s**4 + 5 * s**3 + 5 * s**2 - 2 * s - 3,
-                    -4 * s - 1,
-                    2,
-                    -(s**3) + 4 * s**2 - 4 * s - 2,
-                    5 * s**5 - 3 * s**3 + s**2 - s + 3,
-                    -5 * s**3 - 5 * s**2 + s + 4,
-                ],
-                [4, 3, 4, 5 * s**2 - 2 * s - 5, 5 * s + 3, 4],
-                [
-                    -1,
-                    -3 * s**3 - s**2 - s - 5,
-                    -2 * s - 5,
-                    3 - 5 * s,
-                    -3 * s**4 + s**3 + 5 * s**2 + s + 5,
-                    -5 * s**3 + s**2 + 3 * s,
-                ],
-            ]
-        )
-        assert not is_col_reduced(mat, s)
-    else:
+                4 * s**2 + 2 * s - 2,
+                s - 4,
+                5 * s**3 - 2 * s**2 - 4 * s + 3,
+                -3 * s**4 - 5 * s**3 - 2 * s**2 - 5 * s - 1,
+                4,
+                -5 * s**3 - 3 * s**2 + 4,
+            ],
+            [
+                -4,
+                5 * s**4 - 2 * s**3 + 5 * s**2 - 4 * s - 4,
+                -3 * s - 3,
+                4,
+                -4 * s - 1,
+                3 * s - 5,
+            ],
+            [
+                -4 * s**4 + 5 * s**3 + 5 * s**2 - 2 * s - 3,
+                -4 * s - 1,
+                2,
+                -(s**3) + 4 * s**2 - 4 * s - 2,
+                5 * s**5 - 3 * s**3 + s**2 - s + 3,
+                -5 * s**3 - 5 * s**2 + s + 4,
+            ],
+            [4, 3, 4, 5 * s**2 - 2 * s - 5, 5 * s + 3, 4],
+            [
+                -1,
+                -3 * s**3 - s**2 - s - 5,
+                -2 * s - 5,
+                3 - 5 * s,
+                -3 * s**4 + s**3 + 5 * s**2 + s + 5,
+                -5 * s**3 + s**2 + 3 * s,
+            ],
+        ]
+    )
+    assert not is_col_reduced(mat, s)
+    good.append(mat)
+
+    mat = sp.Matrix([
+        [3, -3 * s - 4, -1],
+        [-2, -1, -4],
+        [3, -3 * s - 4, -1]])
+    assert not is_col_reduced(mat, s)
+    bad.append(mat)
+
+    for k in range(10):
         while True:
             mat = random_poly_mat(5, 6, 5, -5, 5, s)
             if not is_col_reduced(mat, s):
                 break
-    print("Initial matrix:")
-    print(mat)
-    red, r = column_reduced_form(mat, s)
-    assert is_col_reduced(red, s)
+        if mat.rank() == 5:
+            good.append(mat)
+        else:
+            bad.append(mat)
+
+    def _red_col(m):
+        red, r = column_reduced_form(m, s)
+        assert is_col_reduced(red, s)
+
+    print("Good list:")
+    for b in good:
+        _red_col(b)
+
+    print("Bad list:")
+    for b in bad:
+        with pytest.raises(ValueError):
+            _red_col(b)

@@ -420,7 +420,7 @@ def column_reduced_form(
     m = mat.copy()
     u = sp.Matrix.eye(m.shape[1])
     # u = m.eye(m.shape[1], m.domain)
-    while not is_col_reduced(m, sym):
+    while not is_col_reduced(m, sym) and sym in m.free_symbols:
         # sort into decreasing column degrees
         cds = get_leading_column_degrees(m, sym)
         if sorted(cds, reverse=True) != cds:
@@ -471,5 +471,10 @@ def column_reduced_form(
         m = m @ r
         m.simplify()
         u = u @ r
+
+    if sym not in m.free_symbols:
+        raise ValueError(
+            f"Provided matrix of dim {m.shape} is singular with rank {m.rank()}"
+        )
 
     return m, u

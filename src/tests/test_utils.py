@@ -254,3 +254,9 @@ def test_factor_diag():
 
     f = factor_diag_post(r, del_mat)
     assert f @ del_mat - r == sp.Matrix.zeros(*h_mat.shape)
+
+
+def test_is_col_reduced():
+    s = sp.Symbol("s")
+    m = sp.Matrix([[0, -1, 3], [0, -4, -2], [0, -1, 3]])
+    assert is_col_reduced(m, s) == False
