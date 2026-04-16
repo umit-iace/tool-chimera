@@ -1,6 +1,7 @@
 import random
 
 import sympy as sp
+from sympy import Matrix, sqrt
 import pytest
 
 from chimera import QPoly
@@ -15,14 +16,12 @@ from chimera.algos import (
     check_col_degrees_on_diagonal,
 )
 from chimera.utils import (
-    get_leading_column_degrees,
     get_lccm,
     check_singularities,
     is_col_reduced,
-    random_poly_mat,
     get_matrix_terms,
-    random_partition_m_parts
 )
+from chimera.poly import random_poly_mat, random_col_reduced_mat
 
 # generators
 sigma = sp.Symbol("sigma", positive=True)
@@ -132,91 +131,52 @@ def test_gplde():
         # check_singularities(rep, s, sigma, sp.exp(s), verbose=True)
 
 
-def test_reduce_matrix_shifts():
-    n = 1
-    nm = 3
-    np = 3
-
-    rand = False
-    rand = True
-
-    # ode part
-    print("ODE parametrisation matrices D and N:")
-    if rand:
-        print("Generating random matrix")
-        cds = random_partition_m_parts(n, nm)
-        assert len(cds) == nm
-        assert sum(cds) == n
-        d_mat = random_poly_mat(nm, nm, cds, -5, 5, s)
-        assert get_leading_column_degrees(d_mat, s) == cds
-        d_mat, _ = column_reduced_form(d_mat, s)
-    elif nm == 2:
-        d_mat = sp.Matrix([[4*s + 5, 1 - 5*s], [3*s + 4, -4*s**2 + 5*s - 5]])
-    elif nm == 3:
-        d_mat = sp.Matrix([[-1, 3 * s - 1, -5], [-5, 4, 1], [-1, -1, 5]])
-    else:
-        d_mat = sp.Matrix(
-            [
-                [
-                    -3 * s**2 + 4 * s - 3,
-                    5,
-                    -2 * s**3
-                    - 15 * s**2 / 2
-                    - 2 * s * (-3 * s**2 + 4 * s - 3) / 3
-                    + 5 * s
-                    + 2,
-                ],
-                [
-                    -3,
-                    -2 * s - 3,
-                    -(s**3) - s**2 * (-2 * s - 3) / 2 - 2 * s**2 - 2 * s - 2,
-                ],
-                [-2, 4, -2 * s**2 + 4 * s / 3 - 1],
-            ]
-        )
-    assert is_col_reduced(d_mat, s)
+def _generate_test_case(n, nm, np):
+    """
+    n: ODE state dimension
+    nm: Negative transport systems cnt
+    np: Positive transport systems cnt
+    """
+    # ODE
+    d_mat = random_col_reduced_mat(nm, nm, n, -5, 5, s)
     n_mat = sp.Matrix.zeros(n, nm)
-    print(d_mat)
-    print(n_mat)
 
-    # pde part
-    if rand:
-        tau_m = sorted([sp.sqrt(2*random.randint(1, 100)+1) for n in range(nm)])
-        tau_p = sorted([-sp.sqrt(2*random.randint(1, 100)+1) for n in range(np)])[::-1]
-    else:
-        if nm == 3 and np == 2:
-            tau_m = [sp.sqrt(33), sp.sqrt(123), sp.sqrt(161)]
-            tau_p = [-sp.sqrt(91), -sp.sqrt(161)]
-        else:
-            pass
+    # Coupling
+    q0_mat = sp.Matrix.zeros(np, nm)
+    while q0_mat.rank() < np:
+        q0_mat = sp.randMatrix(np, nm, -10, 10)
+    q1_mat = sp.Matrix.zeros(nm, np)
+    while q1_mat.rank() < np:
+        q1_mat = sp.randMatrix(nm, np, -10, 10)
+    c_mat = sp.Matrix.zeros(np, n)
+
+    # PDE
+    tau_m = sorted([sp.sqrt(2 * random.randint(1, 100) + 1) for n in range(nm)])
+    tau_p = sorted([-sp.sqrt(2 * random.randint(1, 100) + 1) for n in range(np)])[
+            ::-1
+        ]
+
+    c = d_mat, n_mat, c_mat, q0_mat, q1_mat, tau_m, tau_p
+    return c
+
+
+def _run_reduction_test(case):
+    print("----- Running reduction test ------")
+    print(f" case = {case}")
+    print("-----------------------------------")
+
+    (d_mat, n_mat, c_mat, q0_mat, q1_mat, tau_m, tau_p)  = case
+
+    assert q0_mat.rank() == q1_mat.rank() == len(tau_p)
 
     pred_mat = sp.Matrix.diag([sigma**tau for tau in tau_m])
     delay_mat = sp.Matrix.diag([sigma**tau for tau in tau_p])
+
     des_state_dim = (sp.Add(*tau_m) - sp.Add(*tau_p)).simplify()
     print(f"System predictions: {tau_m}")
     print(f"System delays: {tau_p}")
-    print(f"Original state dimensions {[tm - tp for tm,tp in zip(tau_m, tau_p)]}")
+    print(f"Original state dimensions {[tm - tp for tm, tp in zip(tau_m, tau_p)]}")
     print(f"Original full state dim: {des_state_dim} ({des_state_dim.evalf()})")
-
-    print("PDE boundary matrices Q0, Q1 and C")
-    if rand:
-        q0_mat = sp.Matrix.zeros(np, nm)
-        while q0_mat.rank() < np:
-            q0_mat = sp.randMatrix(np, nm, -10, 10)
-        q1_mat = sp.Matrix.zeros(nm, np)
-        while q1_mat.rank() < np:
-            q1_mat = sp.randMatrix(nm, np, -10, 10)
-    elif nm == np == 2:
-        # 2x2 cases:
-        q0_mat = sp.Matrix([[-10, -10], [-8, -1]])
-        q1_mat = sp.Matrix([[7, 7], [-10, 8]])
-    elif nm == 3 and np == 2:
-        q0_mat = sp.Matrix([[-5, 9, -9], [2, -10, 5]])
-        q1_mat = sp.Matrix([[4, -9], [8, 2], [9, -7]])
-    c_mat = sp.Matrix.zeros(np, n)
-    print(q0_mat)
-    print(q1_mat)
-    print(c_mat)
 
     print("G Matrix:")
     h_mat = q0_mat @ d_mat + c_mat @ n_mat
@@ -232,10 +192,10 @@ def test_reduce_matrix_shifts():
     print("Initial Column degrees:")
     sp.pprint(cd)
     init_state_dim = sp.Add(*cd).simplify()
-    print(f"Initial state dimension: {init_state_dim}")
+    print(f"Initial state dimension: {init_state_dim} ({init_state_dim.evalf()})")
 
     print("After preliminary trafo:")
-    L,U,p = q1_mat[:,::-1].LUdecomposition()
+    L, U, p = q1_mat[:, ::-1].LUdecomposition()
     m = L.inv() @ m
     mq = m.applyfunc(lambda x: QPoly(x, sigma))
     sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
@@ -245,26 +205,22 @@ def test_reduce_matrix_shifts():
     print("In canonical form:")
     mq = m.applyfunc(lambda x: QPoly(x, sigma))
     sp.pprint(mq.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
-    sp.pprint(mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())), wrap_line=False)
+    sp.pprint(
+        mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
+        wrap_line=False,
+    )
 
-    if 0:
-        # test some ideas
-        for r in range(mq.rows):
-            md = mq.applyfunc(lambda x: x.degree().evalf())
-            if not all([md[r,0] == md[r,c] for c in range(mq.cols)]):
-                sp.pprint(md)
-                sp.pprint(mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())), wrap_line=False)
-                sp.pprint(get_lccm(m, s))
-                raise ValueError("Does not work")
-        return
-
+    # the actual function call
     mrg, lg = reduce_matrix_shifts(m, s, sigma)
 
     print("Reduction results:")
     mq = mrg.applyfunc(lambda x: QPoly(x, sigma))
     sp.pprint(mq, wrap_line=False)
     sp.pprint(mq.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
-    sp.pprint(mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())), wrap_line=False)
+    sp.pprint(
+        mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
+        wrap_line=False,
+    )
 
     print("Checking results:")
     # 1) all elements should have same degrees in each column
@@ -289,6 +245,47 @@ def test_reduce_matrix_shifts():
     lcmes = get_lccm(lcme, s)
     assert lcmes.rank() == m.shape[0]
     assert lcmes == lcmse
+
+
+def test_reduce_matrix_shifts():
+    print("2 x 2 cases:")
+    cs = []
+    case = (Matrix([
+        [-4, -5 * s ** 2 + 5 * s - 3],
+        [-5 * s - 3, -4 * s ** 2 + s + 2]]), Matrix([
+        [0, 0],
+        [0, 0],
+        [0, 0]]), Matrix([
+        [0, 0, 0],
+        [0, 0, 0]]), Matrix([
+        [-1, 5],
+        [-3, 0]]), Matrix([
+        [5, 2],
+        [0, 3]]), [sqrt(159), sqrt(163)], [-sqrt(15), -sqrt(67)])
+    cs.append(case)
+
+    # add some random ones, too
+    cs.append(_generate_test_case(2, 2, 2))
+    cs.append(_generate_test_case(3, 2, 2))
+    cs.append(_generate_test_case(4, 2, 2))
+    for c in cs:
+        _run_reduction_test(c)
+
+    print("3 x 2 cases")
+    cs = []
+    cs.append(_generate_test_case(2, 3, 2))
+    cs.append(_generate_test_case(3, 3, 2))
+    cs.append(_generate_test_case(4, 3, 2))
+    for c in cs:
+        _run_reduction_test(c)
+
+    print("3 x 3 cases")
+    cs = []
+    cs.append(_generate_test_case(2, 3, 3))
+    cs.append(_generate_test_case(3, 3, 3))
+    cs.append(_generate_test_case(4, 3, 3))
+    for c in cs:
+        _run_reduction_test(c)
 
 
 def test_move_col_degrees_on_diagonal():
