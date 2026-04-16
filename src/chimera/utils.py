@@ -1,14 +1,15 @@
 """
 Utility functions
 """
-
-from random import randint
+import random as rd
+from collections.abc import Iterable
 
 import numpy as np
 import sympy as sp
 from sympy import random_poly
-from sympy.core.random import seed
+from sympy.core.random import seed, shuffle
 from sympy.core.function import AppliedUndef
+from sympy.utilities.iterables import ordered_partitions
 
 from .qpoly import QPoly
 
@@ -410,9 +411,21 @@ def check_singularities(
 
 
 def random_poly_mat(m, n, order, c_min, c_max, p_gen):
-    mat = sp.Matrix(
-        [random_poly(p_gen, randint(0, order), c_min, c_max) for i in range(m * n)]
-    ).reshape(m, n)
+    if isinstance(order, Iterable):
+        assert len(order) == n
+    else:
+        order = [order] * n
+
+    mat = sp.Matrix.zeros(n, m)
+    for j in range(n):
+        cd_max = order[j]
+        # generate orders for all columns
+        cds = [rd.randint(0, cd_max) for i in range(m)]
+        if cd_max not in cds:
+            # guarantee that the maximum degree is present
+            cds[rd.randint(0, m-1)] = cd_max
+        for i in range(m):
+                mat[i,j] = random_poly(p_gen, cds[i], c_min, c_max)
     return mat
 
 
@@ -833,3 +846,24 @@ def substitute_hcf_state(expr, mapping, temp_var, spat_var):
         return _expr
 
     return rec(expr)
+
+
+def random_partition_m_parts(n, m):
+    """Generate a random partition of n into exactly m parts."""
+    if m < 1:
+        raise ValueError("m must be greater than 1")
+    if m > n:
+        n += m
+        pad = 1
+    else:
+        pad = 0
+
+    # form all possible partitions, choose one and shuffle it
+    all_partitions = [list(p) for p in ordered_partitions(n, m)]
+    part = rd.choice(all_partitions)
+    shuffle(part)
+
+    # remove padding
+    part[:] = [p-pad for p in part]
+
+    return part
