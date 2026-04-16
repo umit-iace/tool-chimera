@@ -151,8 +151,8 @@ def _generate_test_case(n, nm, np):
     c_mat = sp.Matrix.zeros(np, n)
 
     # PDE
-    tau_m = sorted([sp.sqrt(2 * random.randint(1, 10) + 1) for n in range(nm)])
-    tau_p = sorted([-sp.sqrt(2 * random.randint(1, 10) + 1) for n in range(np)])[::-1]
+    tau_m = sorted([sp.sqrt(2 * random.randint(1, 5) + 1) for n in range(nm)])
+    tau_p = sorted([-sp.sqrt(2 * random.randint(1, 5) + 1) for n in range(np)])[::-1]
 
     c = d_mat, n_mat, c_mat, q0_mat, q1_mat, tau_m, tau_p
     return c
@@ -242,14 +242,14 @@ def _run_reduction_test(case):
     assert lcmes.rank() == m.shape[0]
 
 
-def test_reduce_matrix_shifts():
+def test_reduce_matrix_shifts_2x2():
     print("2 x 2 cases:")
     cs = []
 
     if 0:
         # pathological case: Due to the nearly similar predictions,
         # this will need several internal steps to reduce one entry
-        # with sympys current derivative computation speed, this takes quite long
+        # with sympys current derivative computation speed, this takes quite long.
         case = (
             Matrix([[-4, -5 * s**2 + 5 * s - 3], [-5 * s - 3, -4 * s**2 + s + 2]]),
             Matrix([[0, 0], [0, 0], [0, 0]]),
@@ -262,26 +262,29 @@ def test_reduce_matrix_shifts():
         cs.append(case)
 
     # add some random ones, too
-    # cs.append(_generate_test_case(1, 2, 2))
-    # cs.append(_generate_test_case(2, 2, 2))
-    # cs.append(_generate_test_case(3, 2, 2))
-    # cs.append(_generate_test_case(4, 2, 2))
+    for d in range(1, 3):
+        for k in range(10):
+            cs.append(_generate_test_case(d, 2, 2))
+
     for c in cs:
         _run_reduction_test(c)
 
+
+def test_reduce_matrix_shifts_3x2():
     print("3 x 2 cases:")
     cs = []
-    # cs.append(_generate_test_case(1, 3, 2))
-    # cs.append(_generate_test_case(2, 3, 2))
-    # cs.append(_generate_test_case(3, 3, 2))
-    # cs.append(_generate_test_case(4, 3, 2))
+    for k in range(10):
+        cs.append(_generate_test_case(1, 3, 2))
+
     for c in cs:
         _run_reduction_test(c)
 
+
+def test_reduce_matrix_shifts_3x3():
     print("3 x 3 cases:")
     cs = []
 
-    if 0:
+    if 1:
         # highest degree wrt s not in highest coeff wrt sigma in orig G mat
         case = (
             Matrix([[-4, 2, 5], [-3, 4, 1], [5 * s + 3, -4, 1]]),
@@ -296,9 +299,10 @@ def test_reduce_matrix_shifts():
 
     for k in range(10):
         cs.append(_generate_test_case(1, 3, 3))
-    # cs.append(_generate_test_case(2, 3, 3))
-    # cs.append(_generate_test_case(3, 3, 3))
-    # cs.append(_generate_test_case(4, 3, 3))
+        # cs.append(_generate_test_case(2, 3, 3))
+        # cs.append(_generate_test_case(3, 3, 3))
+        # cs.append(_generate_test_case(4, 3, 3))
+
     for c in cs:
         _run_reduction_test(c)
 

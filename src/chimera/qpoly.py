@@ -267,13 +267,14 @@ class QPoly(sp.Basic):
         for term in sp.Add.make_args(expr):
             coeff = []
             exp = []
-            term = term.expand(power_exp=False).collect(gen**w).collect(gen)
+            term = term.expand(power_exp=False).factor(gen)
             for factor in sp.Mul.make_args(term):
                 factor = factor.collect(gen**w).collect(gen)
                 for sub_factor in sp.Mul.make_args(factor):
                     if not sub_factor.has_free(gen):
                         coeff.append(sub_factor)
                     else:
+                        # TODO write new function that takes the actual generator to make the process more robust
                         p_base, p_exp = sub_factor.as_base_exp()
                         if p_base != gen:
                             if isinstance(p_base, sp.Pow) and p_base.args[0] == gen:
