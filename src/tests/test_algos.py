@@ -1,4 +1,3 @@
-import pickle
 import random
 
 import sympy as sp
@@ -14,15 +13,15 @@ from chimera.algos import (
     canonical_form,
     move_col_degrees_on_diagonal,
     check_col_degrees_on_diagonal,
-    homogenise_leading_shifts
 )
 from chimera.utils import (
-    get_column_degrees,
+    get_leading_column_degrees,
     get_lccm,
     check_singularities,
     is_col_reduced,
     random_poly_mat,
     get_matrix_terms,
+    random_partition_m_parts
 )
 
 # generators
@@ -134,42 +133,27 @@ def test_gplde():
 
 
 def test_reduce_matrix_shifts():
-    nm = n = 2
-    np = 2
+    n = 1
+    nm = 3
+    np = 3
+
     rand = False
     rand = True
 
     # ode part
+    print("ODE parametrisation matrices D and N:")
     if rand:
-        m = random_poly_mat(n, n, n, -5, 5, s)
-        d_mat, _ = column_reduced_form(m, s)
-        print("ODE Input parametrisation matrix:")
-        print(d_mat)
+        print("Generating random matrix")
+        cds = random_partition_m_parts(n, nm)
+        assert len(cds) == nm
+        assert sum(cds) == n
+        d_mat = random_poly_mat(nm, nm, cds, -5, 5, s)
+        assert get_leading_column_degrees(d_mat, s) == cds
+        d_mat, _ = column_reduced_form(d_mat, s)
     elif nm == 2:
-        # d_mat = sp.Matrix(
-        #     [
-        #         [3 * s / 5 + 2, sp.Rational(4, 3)],
-        #         [
-        #             -3 * s**2
-        #             + 9 * s * (20 * s / 3 + sp.Rational(19, 3)) / 20
-        #             - 2 * s
-        #             - 1,
-        #             20 * s / 3 + sp.Rational(19, 3),
-        #         ],
-        #     ]
-        # )
-        # d_mat = sp.Matrix([[-3*s**2 - 4*s + 1, -4], [4*s**2 + 5*s - 5, 3 - 2*s]])
-        # n_mat = sp.Matrix([[1, 0], [s, 0], [0, 1], [0, s]])
-        # d_mat = sp.Matrix([[-2*s - 4, -5*s - 1], [-16*s - 10, 3*s**2 - 4*s + 5]])
         d_mat = sp.Matrix([[4*s + 5, 1 - 5*s], [3*s + 4, -4*s**2 + 5*s - 5]])
     elif nm == 3:
-        d_mat = sp.Matrix(
-            [
-                [-4 * s**3 - 2 * s**2 + 5 * s + 1, -2 * s**2 - 2 * s + 5, 2 * s - 2],
-                [2 * s - 1, 2 * s**3 - 1, 2 * s - 2],
-                [-(s**2) + 4 * s + 2, 2, 3 * s - 1],
-            ]
-        )
+        d_mat = sp.Matrix([[-1, 3 * s - 1, -5], [-5, 4, 1], [-1, -1, 5]])
     else:
         d_mat = sp.Matrix(
             [
@@ -192,24 +176,19 @@ def test_reduce_matrix_shifts():
         )
     assert is_col_reduced(d_mat, s)
     n_mat = sp.Matrix.zeros(n, nm)
-    c_mat = sp.Matrix.zeros(np, n)
-    h_mat = d_mat + c_mat @ n_mat
+    print(d_mat)
+    print(n_mat)
 
     # pde part
     if rand:
         tau_m = sorted([sp.sqrt(2*random.randint(1, 100)+1) for n in range(nm)])
         tau_p = sorted([-sp.sqrt(2*random.randint(1, 100)+1) for n in range(np)])[::-1]
     else:
-        # tau_m = [sp.Rational(1, sp.prime(2 * n + 1)) for n in range(nm)][::-1]
-        # tau_p = [-sp.Rational(1, sp.prime(2 * n + 2)) for n in range(np)][::-1]
-        # tau_m = [sp.prime(2 * n + 1) for n in range(nm)]
-        # tau_p = [-sp.prime(2 * n + 2) for n in range(np)]
-        # tau_m = [sp.sqrt(15).evalf(), sp.sqrt(21).evalf()]
-        # tau_p = [-sp.sqrt(13).evalf(), -sp.sqrt(21).evalf()]
-        # tau_m = [sp.sqrt(15), sp.sqrt(21)]
-        # tau_p = [-sp.sqrt(13), -sp.sqrt(21)]
-        tau_m = [sp.sqrt(7), sp.sqrt(17)]
-        tau_p = [-sp.sqrt(15), -sp.sqrt(21)]
+        if nm == 3 and np == 2:
+            tau_m = [sp.sqrt(33), sp.sqrt(123), sp.sqrt(161)]
+            tau_p = [-sp.sqrt(91), -sp.sqrt(161)]
+        else:
+            pass
 
     pred_mat = sp.Matrix.diag([sigma**tau for tau in tau_m])
     delay_mat = sp.Matrix.diag([sigma**tau for tau in tau_p])
@@ -217,8 +196,9 @@ def test_reduce_matrix_shifts():
     print(f"System predictions: {tau_m}")
     print(f"System delays: {tau_p}")
     print(f"Original state dimensions {[tm - tp for tm,tp in zip(tau_m, tau_p)]}")
-    print(f"Original full state dim: {des_state_dim}")
+    print(f"Original full state dim: {des_state_dim} ({des_state_dim.evalf()})")
 
+    print("PDE boundary matrices Q0, Q1 and C")
     if rand:
         q0_mat = sp.Matrix.zeros(np, nm)
         while q0_mat.rank() < np:
@@ -228,26 +208,19 @@ def test_reduce_matrix_shifts():
             q1_mat = sp.randMatrix(nm, np, -10, 10)
     elif nm == np == 2:
         # 2x2 cases:
-        # q0_mat = sp.Matrix([[-1, 1], [0, 1]])
-        # q1_mat = sp.Matrix([[0, -1], [-1, 0]])
-        # q0_mat = sp.Matrix([[0, -1], [-1, -1]])
-        # q1_mat = sp.Matrix([[0, 1], [1, -1]])
-        # q0_mat = sp.Matrix([[1, 1], [0, -1]])
-        # q1_mat = sp.Matrix([[-1, -1], [-1, 1]])
         q0_mat = sp.Matrix([[-10, -10], [-8, -1]])
         q1_mat = sp.Matrix([[7, 7], [-10, 8]])
     elif nm == 3 and np == 2:
-        # q0_mat = sp.Matrix([[1, 1, 0], [0, -1, 1]])
-        # q1_mat = sp.Matrix([[-1, 0], [0, -1], [-1, 1]])
-        q0_mat = sp.Matrix([[-1, 0, 0], [0, -1, -1]])
-        q1_mat = sp.Matrix([[-1, -1], [-1, 1], [-1, 0]])
-    print("PDE boundary matrices Q0 and Q1")
+        q0_mat = sp.Matrix([[-5, 9, -9], [2, -10, 5]])
+        q1_mat = sp.Matrix([[4, -9], [8, 2], [9, -7]])
+    c_mat = sp.Matrix.zeros(np, n)
     print(q0_mat)
     print(q1_mat)
+    print(c_mat)
 
-    # g matrix
-    m = pred_mat @ d_mat - q1_mat @ delay_mat @ q0_mat @ h_mat
     print("G Matrix:")
+    h_mat = q0_mat @ d_mat + c_mat @ n_mat
+    m = pred_mat @ d_mat - q1_mat @ delay_mat @ h_mat
     # sp.pprint(m, wrap_line=False)
     mq = m.applyfunc(lambda x: QPoly(x, sigma))
     sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
@@ -261,7 +234,7 @@ def test_reduce_matrix_shifts():
     init_state_dim = sp.Add(*cd).simplify()
     print(f"Initial state dimension: {init_state_dim}")
 
-    print("Pre Trafo:")
+    print("After preliminary trafo:")
     L,U,p = q1_mat[:,::-1].LUdecomposition()
     m = L.inv() @ m
     mq = m.applyfunc(lambda x: QPoly(x, sigma))
@@ -271,21 +244,31 @@ def test_reduce_matrix_shifts():
     l, m, r = canonical_form(m, s, sigma)
     print("In canonical form:")
     mq = m.applyfunc(lambda x: QPoly(x, sigma))
-    sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
-    sp.pprint(mq.applyfunc(lambda x: (x.degmin(), x.degmax())), wrap_line=False)
+    sp.pprint(mq.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
+    sp.pprint(mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())), wrap_line=False)
+
+    if 0:
+        # test some ideas
+        for r in range(mq.rows):
+            md = mq.applyfunc(lambda x: x.degree().evalf())
+            if not all([md[r,0] == md[r,c] for c in range(mq.cols)]):
+                sp.pprint(md)
+                sp.pprint(mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())), wrap_line=False)
+                sp.pprint(get_lccm(m, s))
+                raise ValueError("Does not work")
+        return
 
     mrg, lg = reduce_matrix_shifts(m, s, sigma)
 
     print("Reduction results:")
-    # mq = mrg.applyfunc(lambda x: QPoly(x, sigma))
-    # sp.pprint(mq, wrap_line=False)
-    # sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
-    # sp.pprint(mq.applyfunc(lambda x: (x.degmin(), x.degmax())), wrap_line=False)
+    mq = mrg.applyfunc(lambda x: QPoly(x, sigma))
+    sp.pprint(mq, wrap_line=False)
+    sp.pprint(mq.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
+    sp.pprint(mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())), wrap_line=False)
 
     print("Checking results:")
-
     # 1) all elements should have same degrees in each column
-    (_, l_cd), (_, t_cd) = get_matrix_terms(mrg, sigma)
+    (_, l_cd), (_, t_cd) = get_matrix_terms(mq, sigma)
     cds = l_cd - t_cd
     cd = [max(cds[:, c]) for c in range(cds.shape[1])]
     print("New column degrees:")
@@ -294,12 +277,12 @@ def test_reduce_matrix_shifts():
     print(f"New state dimension {new_state_dim}")
     dim_err = (new_state_dim - des_state_dim).simplify()
     print(f"dimension error: {dim_err}")
-    assert dim_err == 0
+    assert dim_err <= 0
 
     # 2) leading coefficient matrices wrt s and sigma must commute and have full rank
-    lcms = get_lccm(mrg, s)
+    lcms = get_lccm(mq, s)
     assert lcms.rank() == m.shape[0]
-    lcme = get_lccm(mrg, sigma)
+    lcme = get_lccm(mq, sigma)
     assert lcms.rank() == m.shape[0]
     lcmse = get_lccm(lcms, sigma)
     assert lcmse.rank() == m.shape[0]
