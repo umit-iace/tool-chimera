@@ -416,7 +416,7 @@ def random_poly_mat(m, n, order, c_min, c_max, p_gen):
     else:
         order = [order] * n
 
-    mat = sp.Matrix.zeros(n, m)
+    mat = sp.Matrix.zeros(m, n)
     for j in range(n):
         cd_max = order[j]
         # generate orders for all columns
