@@ -11,6 +11,7 @@ from .qpoly import QPoly
 from .utils import (
     get_matrix_terms,
     get_leading_term_matrix,
+    get_lccm,
     factor_diag_post,
 )
 
@@ -432,28 +433,28 @@ def make_entire(
     rts = sp.roots(p_den, rat_sym)
 
     # start without denominator and iteratively add zeroes
-    egp = QPoly(num / lc, gen_expr)
+    eq = QPoly(num / lc, gen_expr)
     for r, m in rts.items():
         if verbose:
             print(f"Lifting root at {rat_sym}={r} with multiplicity {m}")
 
         # compute derivatives
-        egp_k_ds = [egp.as_expr()]
+        eq_k_ds = [eq.as_expr()]
         for i in range(1, m):
-            egp_k_ds.append(egp_k_ds[-1].diff(rat_sym))
+            eq_k_ds.append(eq_k_ds[-1].diff(rat_sym))
 
         # compute the limit at s = r
-        egp_at_r = sp.Add(
+        eq_at_r = sp.Add(
             *[
-                egp_k_ds[i].subs(rat_sym, r) * (rat_sym - r) ** i / sp.factorial(i)
+                eq_k_ds[i].subs(rat_sym, r) * (rat_sym - r) ** i / sp.factorial(i)
                 for i in range(m)
             ]
         )
         # include multiple roots in one step
-        egp = (egp - egp_at_r) / (rat_sym - r) ** m
+        eq = (eq - eq_at_r) / (rat_sym - r) ** m
 
     # add offset term to original expression
-    p = egp.as_dict().get(0, sp.S.Zero)
+    p = eq.as_dict().get(0, sp.S.Zero)
     return expr + p, p
 
 
@@ -503,31 +504,31 @@ def get_column_reduction_transform(mat, col, p_gen, gp_gen=None):
 
 
 def reduce_matrix_shifts(
-    mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol
+    mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol
 ) -> Tuple[sp.Matrix, sp.Matrix]:
-    # gp_mat = mat.applyfunc(lambda x: GenPoly(x, gp_gen))
-    gp_mat = mat.copy()
-    check_canonical_form(gp_mat, p_gen, gp_gen)
+    # red_mat = mat.applyfunc(lambda x: QPoly(x, q_gen))
+    red_mat = mat.copy()
+    check_canonical_form(red_mat, p_gen, q_gen)
 
     l_mat = sp.Matrix.eye(mat.shape[0])
     for i in range(1, mat.shape[0]):
         print(f"Reducing row {i}")
         for j in range(mat.shape[0] - 1):
             print(f"Reducing col {j}")
-            lc = get_column_reduction_transform(gp_mat, j, p_gen, gp_gen)
-            gp_mat = lc @ gp_mat
+            lc = get_column_reduction_transform(red_mat, j, p_gen, q_gen)
+            red_mat = lc @ red_mat
             l_mat = lc @ l_mat
             if 0:
-                # gp_mat = gp_mat.applyfunc(sp.simplify)
-                gp_mat = gp_mat.applyfunc(lambda x: QPoly(x, gp_gen))
-                # gp_mat = gp_mat.applyfunc(lambda x: GenPoly(x, gp_gen).as_expr())
+                # red_mat = red_mat.applyfunc(sp.simplify)
+                red_mat = red_mat.applyfunc(lambda x: QPoly(x, q_gen))
+                # red_mat = red_mat.applyfunc(lambda x: GenPoly(x, gp_gen).as_expr())
             # l_mat = (lc @ l_mat).applyfunc(lambda x: GenPoly(x, gp_gen))
 
-    return gp_mat, l_mat
+    return red_mat, l_mat
 
 
 def canonical_form(
-    mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol
+    mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol
 ) -> Tuple[sp.Matrix, sp.Matrix, sp.Matrix]:
     """
     Apply row and colum permutations to bring mat into canonical form
@@ -537,20 +538,20 @@ def canonical_form(
     * Sort columns such that the highest poly degrees appear on the main diagonal
     * Homogenise the leading row delays
     """
-    m, l_mat = sort_shift_intervals(mat, gp_gen)
-    m, r_mat = move_col_degrees_on_diagonal(m, p_gen)
-    m, hom_trafo = homogenise_leading_shifts(m, gp_gen, mode="delay")
+    m, l_mat = sort_shift_intervals(mat, q_gen)
+    m, r_mat = move_col_degrees_on_diagonal(m, p_gen, q_gen)
+    m, hom_trafo = homogenise_leading_shifts(m, q_gen, mode="delay")
     return hom_trafo @ l_mat, m, r_mat
 
 
 def sort_shift_intervals(
-    mat: sp.Matrix, gp_gen: sp.Symbol
+    mat: sp.Matrix, q_gen: sp.Symbol
 ) -> Tuple[sp.Matrix, sp.Matrix]:
     """
     Compute a permutation that sorts the leading row degrees w.r.t shifts ascendingly
     """
     # extract row degrees
-    (_, ld), (_, td) = get_matrix_terms(mat, gp_gen)
+    (_, ld), (_, td) = get_matrix_terms(mat, q_gen)
     cd = ld - td
     r_degs = [max(cd[r, :]) for r in range(cd.rows)]
 
@@ -567,27 +568,32 @@ def sort_shift_intervals(
 
 
 def move_col_degrees_on_diagonal(
-    mat: sp.Matrix, p_gen: sp.Symbol
+    mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol  = None,
 ) -> Tuple[sp.Matrix, sp.Matrix]:
     """
     Compute a permutation that moves the highest derivatives from each column on the main diagonal
     """
     # extract column degrees
-    cffs, degs = get_leading_term_matrix(mat, p_gen)
-    c_degs = [max(degs[:, c]) for c in range(degs.cols)]
+    if q_gen is not None:
+        # if specified, only look at coefficients of largest predictions
+        q_cffs, q_degs = get_leading_term_matrix(mat, q_gen)
+        p_cffs, p_degs = get_leading_term_matrix(q_cffs, p_gen)
+    else:
+        p_cffs, p_degs = get_leading_term_matrix(mat, p_gen)
+    p_col_degs = [max(p_degs[:, c]) for c in range(p_degs.cols)]
 
     # check compatibilities
-    r_compat = [set() for c in range(degs.cols)]
-    for r in range(degs.rows):
-        for c in range(degs.cols):
-            if degs[r, c] == c_degs[c]:
+    r_compat = [set() for c in range(p_degs.cols)]
+    for r in range(p_degs.rows):
+        for c in range(p_degs.cols):
+            if p_degs[r, c] == p_col_degs[c]:
                 r_compat[c].add(r)
     if any([not s for s in r_compat]):
         raise ValueError(
             "Properties not obtainable by reordering, Matrix is probably not column reduced."
         )
 
-    col_compat = list(zip(list(range(degs.cols)), r_compat))
+    col_compat = list(zip(list(range(p_degs.cols)), r_compat))
 
     # sort entries first that only fit a few rows
     col_compat.sort(key=lambda x: len(x[1]))
@@ -630,7 +636,7 @@ def homogenise_leading_shifts(mat, q_gen, mode):
     return mh, l_mat
 
 
-def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
+def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol):
     """
     Check if a matrix m is in canonical form
 
@@ -639,14 +645,14 @@ def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
     - the shift diameters are increasing for each row
     """
     # 1: highest derivatives on the main diagonal
-    check_col_degrees_on_diagonal(mat, p_gen)
+    check_col_degrees_on_diagonal(mat, p_gen, q_gen)
 
     # 2: shifts
-    (l_cffs, l_degs), (t_cffs, t_degs) = get_matrix_terms(mat, gp_gen)
+    (l_cffs, l_degs), (t_cffs, t_degs) = get_matrix_terms(mat, q_gen)
     s_degs = l_degs - t_degs
     row_degs = [max(s_degs[r,:]) for r in range(mat.shape[0])]
     row_degs_m = [min(t_degs[r,:]) for r in range(mat.shape[0])]
-    row_degs_p = [max(l_degs[r,:]) for r in range(mat.shape[0])]
+    # row_degs_p = [max(l_degs[r,:]) for r in range(mat.shape[0])]
 
     # 2a: leading delays of each row must be the same
     if not all(row_degs_m[0] == rd for rd in row_degs_m):
@@ -657,28 +663,31 @@ def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, gp_gen: sp.Symbol):
         raise ValueError("Leading row shift intervals must be ascending.")
 
 
-def check_col_degrees_on_diagonal(mat: sp.Matrix, p_gen: sp.Symbol) -> Any:
-    cffs, degs = get_leading_term_matrix(mat, p_gen)
-    for j in range(degs.shape[1]):
-        if degs[j, j] != max(degs[:, j]):
-            raise ValueError(
-                f"Given matrix does not have highest degrees w.r.t {p_gen} on the main diagonal "
-                f"in column {j}."
-            )
+def check_col_degrees_on_diagonal(mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol=None) -> Any:
+    if q_gen is not None:
+        q_cffs, q_degs = get_leading_term_matrix(mat, q_gen)
+        lccm = get_lccm(q_cffs, p_gen)
+    else:
+        lccm = get_lccm(mat, p_gen)
+
+    if not all([lccm[i,i] != 0 for i in range(lccm.shape[0])]):
+        raise ValueError(
+            f"Given matrix does not have highest degrees w.r.t {p_gen} on the main diagonal."
+        )
     return True
 
 
 def eliminate_delays_ur_post(
-    mat: sp.Matrix, p_gen: sp.Symbol, s_gen: sp.Symbol
+    mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol
 ) -> Tuple[sp.Matrix, sp.Matrix]:
     """
     Eliminate all delays right of the main diagonal
     """
     r_mat = sp.Matrix.eye(mat.shape[1])
     for r in range(mat.shape[0]):
-        pivot = QPoly(mat[r, r], s_gen)
+        pivot = QPoly(mat[r, r], q_gen)
         for c in range(r + 1, mat.shape[1]):
-            elem = QPoly(mat[r, c], s_gen)
+            elem = QPoly(mat[r, c], q_gen)
             quo, rem = qplde(elem, pivot, p_gen)
             r_mat[r, c] = -quo.as_expr()
     res = mat @ r_mat
@@ -687,7 +696,7 @@ def eliminate_delays_ur_post(
 
 
 def eliminate_delays(
-    h_mat: sp.Matrix, del_mat: sp.Matrix, p_gen: sp.Symbol, s_gen: sp.Symbol
+    h_mat: sp.Matrix, del_mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol
 ) -> Tuple[sp.Matrix, sp.Matrix, sp.Matrix]:
     """
     Compute transformation that will eliminate all delays in a given system
@@ -697,7 +706,7 @@ def eliminate_delays(
     h_mat
     del_mat
     p_gen
-    s_gen
+    q_gen
 
     Returns
     -------
@@ -717,7 +726,7 @@ def eliminate_delays(
     # print(h1p)
 
     # print("Step 2: Eliminate delays")
-    h2, r2i = eliminate_delays_ur_post(h1p, p_gen, s_gen)
+    h2, r2i = eliminate_delays_ur_post(h1p, p_gen, q_gen)
     # print(h2)
     # print(r2i)
 
