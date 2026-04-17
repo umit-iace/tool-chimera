@@ -154,6 +154,15 @@ def get_column_degrees(mat: sp.Matrix, sym: sp.Symbol, subs: dict = None) -> lis
     return max_degs, min_degs
 
 
+def get_row_degrees(mat: sp.Matrix, sym: sp.Symbol) -> list:
+    """
+    Extract the highest and smallest degrees of each row
+    """
+    (_, l_degs), (_, t_degs) = get_matrix_terms(mat, sym)
+    r_degs = [max(l_degs[r, :] - t_degs[r, :]) for r in range(mat.shape[0])]
+    return r_degs
+
+
 def get_term(
     e: sp.Expr, sym: sp.Symbol
 ) -> tuple[tuple[sp.Expr, sp.Expr], tuple[sp.Expr, sp.Expr]]:
