@@ -166,35 +166,39 @@ def get_term(
         Tuple of coefficient and exponent for the selected mode.
     """
 
-    def _handle_gpoly(_gp: QPoly):
-        lc = _gp.LC()
-        ld = _gp.degmax()
-        tc = _gp.TC()
-        td = _gp.degmin()
+    def _handle_qpoly(_qp: QPoly):
+        lc = _qp.LC()
+        ld = _qp.degmax()
+        tc = _qp.TC()
+        td = _qp.degmin()
         return (lc, ld), (tc, td)
 
     def _handle_poly(_p: sp.Poly):
         lc = _p.LC()
         ld = _p.degree()
-        tc = _p.TC()
-        td = sp.Poly(_p.EM(), _p.gens).degree()
+        td = sp.Poly(_p.EM().as_expr(), _p.gen).degree()
+        tc = _p.coeff_monomial(_p.gen**td)
         return (lc, ld), (tc, td)
 
     def _handle_rational(_np, _dp):
-        lc = _np.LC() / _dp.LC()
+        lc = (_np.LC() / _dp.LC()).cancel()
         ld = _np.degree() - _dp.degree()
-        tc = _np.EC() / _dp.EC()
-        tdn = sp.Poly(_np.EM(), _np.gens).degree()
-        tdd = sp.Poly(_dp.EM(), _dp.gens).degree()
+
+        tdn = sp.Poly(_np.EM().as_expr(), _np.gen).degree()
+        tdd = sp.Poly(_dp.EM().as_expr(), _dp.gen).degree()
         if tdn == sp.S.NegativeInfinity:
             tdn = 0
         if tdd == sp.S.NegativeInfinity:
             tdd = 0
+        tcn = _np.coeff_monomial(_np.gen**tdn)
+        tcd = _dp.coeff_monomial(_dp.gen**tdd)
+        tc = (tcn / tcd).cancel()
         td = tdn - tdd
+
         return (lc, ld), (tc, td)
 
-    def _handle_coefficients(_p, sym):
-        ld = 0
+    def _handle_qpoly_coefficients(_p, sym):
+        ld = sp.S.NegativeInfinity
         td = sp.S.Infinity
         lc = tc = 0
         for e, c in _p.as_dict().items():
@@ -219,16 +223,16 @@ def get_term(
     # maybe it is a quasipolynomial?
     if isinstance(e, QPoly):
         if e.gen == sym:
-            return _handle_gpoly(e)
+            return _handle_qpoly(e)
         else:
-            return _handle_coefficients(e, sym)
+            return _handle_qpoly_coefficients(e, sym)
 
     # maybe it is a polynomial expression?
     if e.is_Poly:
         if e.gen == sym:
             return _handle_poly(e)
-        else:
-            return _handle_coefficients(e, sym)
+        # else:
+        #     return _handle_qpoly_coefficients(e, sym)
     if e.is_polynomial(sym):
         p = sp.Poly(e, sym)
         return _handle_poly(p)
@@ -241,7 +245,7 @@ def get_term(
 
     # last resort, try to parse as quasipolynomial
     p = QPoly(e, sym)
-    return _handle_gpoly(p)
+    return _handle_qpoly(p)
 
 
 def get_lccm(mat: sp.Matrix, sym: sp.Symbol, subs: dict = None) -> sp.Matrix:

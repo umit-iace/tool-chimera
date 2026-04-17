@@ -1,5 +1,7 @@
-import numpy as np
+import random as rd
+
 import pytest
+import numpy as np
 import sympy as sp
 
 from chimera import QPoly
@@ -8,6 +10,7 @@ from chimera.utils import (
     check_delay_condition,
     generate_integer_transform,
     get_coeffs,
+    get_term,
     get_leading_column_degrees,
     get_leading_term_matrix,
     get_lccm,
@@ -82,6 +85,129 @@ def test_get_coeff():
 
     f = 1 / (2 * c2 * c3 * sigma - 2 * c2 * sigma)
     cffs = get_coeffs(f, sigma)
+
+
+def _build_poly(p_gen, p_order, c_max):
+    l_deg = rd.randint(0, p_order)
+    t_deg = rd.randint(0, l_deg)
+    cffs = [rd.randint(1, c_max) if i <= l_deg - t_deg else 0 for i in range(l_deg + 1)]
+    poly = sp.Poly.from_list(cffs, p_gen)
+    lc = cffs[0]
+    ld = l_deg
+    tc = cffs[l_deg - t_deg]
+    td = t_deg
+    return poly, (lc, ld), (tc, td)
+
+
+def _build_rational(r_gen, p_order, c_max):
+    npoly, (nlc, nld), (ntc, ntd) = _build_poly(r_gen, p_order, c_max)
+    dpoly, (dlc, dld), (dtc, dtd) = _build_poly(r_gen, p_order, c_max)
+    rat = (npoly / dpoly).cancel()
+    lc = sp.Rational(nlc, dlc)
+    ld = nld - dld
+    tc = sp.Rational(ntc, dtc)
+    td = ntd - dtd
+    return rat, (lc, ld), (tc, td)
+
+
+def _build_qpoly(c_gen, q_gen, c_order, cc_max):
+    refs = {}
+    qd = {}
+    iqd = {}
+    for i in range(rd.randint(1, 10)):
+        exp = rd.randint(-100, 100)
+        if exp in qd:
+            continue
+        coeff, *terms = _build_rational(c_gen, c_order, cc_max)
+        qd[exp] = coeff
+        iqd[coeff] = exp
+        refs[coeff] = terms
+
+    ldc = max(t[0][1] for t in refs.values())
+    lcc = sum([t[0][0] * q_gen ** iqd[c] for c, t in refs.items() if t[0][1] == ldc])
+
+    tdc = min(t[1][1] for t in refs.values())
+    tcc = sum([t[1][0] * q_gen ** iqd[c] for c, t in refs.items() if t[1][1] == tdc])
+
+    ldq = max([e for e in qd.keys()])
+    lcq = qd[ldq]
+    tdq = min([e for e in qd.keys()])
+    tcq = qd[tdq]
+
+    qp = QPoly.from_dict(qd, q_gen)
+    return qp, ((lcc, ldc), (tcc, tdc)), ((lcq, ldq), (tcq, tdq))
+
+
+def test_get_term_poly():
+    s = sp.symbols("s")
+    for k in range(100):
+        poly, (lc, ld), (tc, td) = _build_poly(s, 100, 100)
+        (_lc, _ld), (_tc, _td) = get_term(poly, s)
+        assert lc == _lc
+        assert ld == _ld
+        assert tc == _tc
+        assert td == _td
+
+
+def test_get_term_rational():
+    s = sp.symbols("s")
+    for k in range(100):
+        rat, (lc, ld), (tc, td) = _build_rational(s, 100, 100)
+        (_lc, _ld), (_tc, _td) = get_term(rat, s)
+        assert lc == _lc
+        assert ld == _ld
+        assert tc == _tc
+        assert td == _td
+
+
+def test_get_term_qpoly():
+    s, sigma = sp.symbols("s sigma")
+    cases = []
+
+    if 1:
+        # failure for negative leading coeff degrees
+        c = (
+            sigma ** 61 * (16 * s ** 2 + 67 * s + 92) / (
+                        14 * s ** 5 + 91 * s ** 4 + 43 * s ** 3 + 70 * s ** 2) + sigma ** 24 * (38 * s + 42) / (
+                        50 * s ** 3 + 9 * s ** 2 + 84 * s),
+            ((19 * sigma ** 24 / 25, -2), (46 * sigma ** 61 / 35, -2)),
+            (((16 * s ** 2 + 67 * s + 92) / (14 * s ** 5 + 91 * s ** 4 + 43 * s ** 3 + 70 * s ** 2), 61),
+             ((38 * s + 42) / (50 * s ** 3 + 9 * s ** 2 + 84 * s), 24)),
+        )
+        cases.append(c)
+
+    for k in range(100):
+        cases.append(_build_qpoly(s, sigma, 10, 100))
+
+    for c in cases:
+        qp, ((lcc, ldc), (tcc, tdc)), ((lcq, ldq), (tcq, tdq)) = c
+        print("-" * 50)
+        print("(")
+        print(f"{c[0].as_expr()},")
+        print(f"{c[1]},")
+        print(f"{c[2]},")
+        print(")")
+        print("-" * 50)
+
+        # test as expression and in object form
+        if isinstance(qp, QPoly):
+            tests = [qp.as_expr(), qp]
+        else:
+            tests = [qp, QPoly(qp, sigma)]
+        for _qp in tests:
+            # exponents
+            (_lc, _ld), (_tc, _td) = get_term(_qp, sigma)
+            assert ldq == _ld
+            assert tdq == _td
+            assert (lcq - _lc).simplify() == 0
+            assert (tcq - _tc).simplify() == 0
+
+            # coefficients
+            (_lc, _ld), (_tc, _td) = get_term(_qp, s)
+            assert ldc == _ld
+            assert tdc == _td
+            assert (lcc - _lc).simplify() == 0
+            assert (tcc - _tc).simplify() == 0
 
 
 def test_get_lccm():
