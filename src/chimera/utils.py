@@ -94,6 +94,13 @@ def get_leading_term_matrix(mat, sym, subs=None):
     return lc, ld
 
 
+def get_leading_row_degrees(mat, sym):
+    (lc, ld), (tc, td) = get_matrix_terms(mat, sym)
+    degs = ld - td
+    lr_degs = [max(degs[r, :]) for r in range(mat.shape[0])]
+    return lr_degs
+
+
 def get_trailing_term_matrix(mat, sym, subs=None):
     _, (tc, td) = get_matrix_terms(mat, sym, subs)
     return tc, td
