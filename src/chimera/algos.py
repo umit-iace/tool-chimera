@@ -10,7 +10,9 @@ from .poly import echelon_form, column_reduced_form
 from .qpoly import QPoly
 from .utils import (
     get_matrix_terms,
+    get_row_degrees,
     get_leading_term_matrix,
+    get_leading_row_degrees,
     get_lccm,
     factor_diag_post,
 )
@@ -327,10 +329,10 @@ def hermite_form(mat: sp.Matrix, p_gen: sp.Symbol, s_gen: sp.Symbol):
 
 
 def qpld(
-    x: Union[QPoly],
-    y: Union[QPoly],
+    mat: sp.Matrix,
+    row: int,
     verbose: bool = False,
-) -> tuple[QPoly, QPoly]:
+) -> tuple[sp.Matrix, sp.Matrix]:
     """
     Perform quasipolynomial long division
 
@@ -347,48 +349,74 @@ def qpld(
         verbose (bool): If True, be verbose about what steps are taken
 
     Returns:
-        Tuple (q,r) of quotient quasipolynomial and remainder.
+        Tuple (q,r) of quotient quasipolynomial and remainder matrices.
     """
-    if not isinstance(x, QPoly) or not isinstance(y, QPoly):
-        raise ValueError("Only arguments of type GenPoly supported")
-    assert x.gen == y.gen
-    assert y != 0
+    x = mat[row, :row].T
+    y = mat.diagonal()[:row, :row].T
 
-    y_dmax = y.degmax()
-    y_dmin = y.degmin()
+    # for _, _y in y.items():
+    #     assert _y != 0
+    #     for _, _x in x.items():
+    #         if not isinstance(_y, QPoly) or not isinstance(_y, QPoly):
+    #             raise ValueError("Only arguments of type GenPoly supported")
+    #         assert _x.gen == _y.gen
 
-    q = QPoly(0, x.gen)
-    r = x
+    y_dmax = [_y.degmax() for _y in y]
+    print("Degrees of reduction terms:")
+    print([__y.evalf() for __y in y_dmax])
+    y_dmin = [_y.degmin() for _y in y]
+
+    q = sp.Matrix([QPoly(0, _x.gen) for _x in x])
+    r = x.copy()
     while True:
-        r_dmax = r.degmax()
-        r_dmin = r.degmin()
+        r = r.applyfunc(lambda x: QPoly(x, y[0].gen))
+        r_dmax = [_r.degmax() for _r in r]
+        r_dmin = [_r.degmin() for _r in r]
 
-        degmax_correct = sp.assumptions.ask(r_dmax <= y_dmax)
-        degmin_correct = sp.assumptions.ask(r_dmin >= y_dmin)
+        print("Degrees of remainder:")
+        print([d.evalf() for d in r_dmax])
 
-        if degmax_correct is None or degmin_correct is None:
-            raise ValueError(
-                "Degree order cannot be decided. Make sure that"
-                "the given expressions exponents to not contain"
-                "any symbols."
-            )
+        degmax_correct = [
+            sp.assumptions.ask(rdm <= _y.degmax()) for rdm, _y in zip(r_dmax, y)
+        ]
+        degmin_correct = [
+            sp.assumptions.ask(rdm >= _y.degmin()) for rdm, _y in zip(r_dmin, y)
+        ]
 
+        # if any(degmax_correct is None) or any(degmin_correct is None):
+        #     raise ValueError(
+        #         "Degree order cannot be decided. Make sure that"
+        #         "the given expressions exponents to not contain"
+        #         "any symbols."
+        #     )
+        #
         if verbose:
             print()
-            print(f"Current pred degree: {r_dmax} < {y_dmax}? {degmax_correct}")
-            print(f"Current delay degree: {r_dmin} > {y_dmin}? {degmin_correct}")
+            print(f"Current pred degrees: {r_dmax} < {y_dmax}? {degmax_correct}")
+            print(f"Current delay degrees: {r_dmin} > {y_dmin}? {degmin_correct}")
 
-        if not degmax_correct:
-            # reduce predictions
-            q_kd = {(r_dmax - y_dmax): r.LC() / y.LC()}
-        elif not degmin_correct:
-            # reduce delays
-            q_kd = {(r_dmin - y_dmin): r.TC() / y.TC()}
-        else:
+        a_mat = sp.Matrix.zeros(row, row)
+        b_vec = sp.Matrix.zeros(row, 1)
+        c_mat = sp.Matrix.zeros(row, row)
+        for i, (dmax, dmin) in enumerate(zip(degmax_correct, degmin_correct)):
+            c_mat[i, :] = [[mat[j, i].as_expr() for j in range(row)]]
+            if not all(degmax_correct):
+                # reduce predictions
+                a_mat[i, :] = [[mat[j, i].LM().as_expr() for j in range(row)]]
+                b_vec[i] = r[i].LM().as_expr()
+            elif not dmin:
+                # reduce delays
+                a_mat[i, :] = [[mat[j, i].TM().as_expr() for j in range(row)]]
+                b_vec[i] = r[i].TM().as_expr()
+            else:
+                continue
+        if b_vec == sp.Matrix.zeros(row, 1):
+            # no further reduction necessary
             break
-        q_k = QPoly.from_dict(q_kd, y.gen)
 
-        r = r - q_k * y
+        q_k = a_mat.inv() @ b_vec
+        r = r.applyfunc(lambda x: x.as_expr()) - c_mat @ q_k
+        # q += q_k.applyfunc(lambda x: QPoly(x, y[0].gen))
         q += q_k
 
     return q, r
@@ -458,12 +486,89 @@ def make_entire(
     return expr + p, p
 
 
-def qplde(
+def qplde_single(x, y, c_gen):
+    q, r = qpld_single(x, y)
+    if q.is_zero:
+        return q, r
+    qe, p = make_entire(q, c_gen)
+    re = r - p * y
+    return qe, re
+
+
+def qpld_single(
     x: Union[QPoly],
     y: Union[QPoly],
-    c_gen: sp.Symbol,
     verbose: bool = False,
 ) -> tuple[QPoly, QPoly]:
+    """
+    Perform quasipolynomial long division
+
+    This function will compute quasipolynomials  q and r,
+    such that x = qy +r with deg(r) < deg(y).
+
+    Note:
+        No care is taken of the coefficients and it is assumed that they
+        support division.
+
+    Args:
+        x (QPoly): Expression to be divided
+        y (QPoly): Expression to divide by
+        verbose (bool): If True, be verbose about what steps are taken
+
+    Returns:
+        Tuple (q,r) of quotient quasipolynomial and remainder.
+    """
+    if not isinstance(x, QPoly) or not isinstance(y, QPoly):
+        raise ValueError("Only arguments of type GenPoly supported")
+    assert x.gen == y.gen
+    assert y != 0
+
+    y_dmax = y.degmax()
+    y_dmin = y.degmin()
+
+    q = QPoly(0, x.gen)
+    r = x
+    while True:
+        r_dmax = r.degmax()
+        r_dmin = r.degmin()
+
+        degmax_correct = sp.assumptions.ask(r_dmax <= y_dmax)
+        degmin_correct = sp.assumptions.ask(r_dmin >= y_dmin)
+
+        if degmax_correct is None or degmin_correct is None:
+            raise ValueError(
+                "Degree order cannot be decided. Make sure that"
+                "the given expressions exponents to not contain"
+                "any symbols."
+            )
+
+        if verbose:
+            print()
+            print(f"Current pred degree: {r_dmax} < {y_dmax}? {degmax_correct}")
+            print(f"Current delay degree: {r_dmin} > {y_dmin}? {degmin_correct}")
+
+        if not degmax_correct:
+            # reduce predictions
+            q_kd = {(r_dmax - y_dmax): r.LC() / y.LC()}
+        elif not degmin_correct:
+            # reduce delays
+            q_kd = {(r_dmin - y_dmin): r.TC() / y.TC()}
+        else:
+            break
+        q_k = QPoly.from_dict(q_kd, y.gen)
+
+        r = r - q_k * y
+        q += q_k
+
+    return q, r
+
+
+def qplde(
+    mat: sp.Matrix,
+    row: int,
+    c_gen: sp.Symbol,
+    verbose: bool = False,
+) -> tuple[sp.Matrix, sp.Matrix]:
     """
     Perform  modified quasipolynomial long division
 
@@ -482,47 +587,62 @@ def qplde(
     Returns:
         Tuple (q,r) of quotient quasipolynomial and remainder.
     """
-    q, r = qpld(x, y, verbose)
-    if q.is_zero:
-        return q, r
-    qe, p = make_entire(q, c_gen)
-    re = r - p * y
-    return qe, re
+    q, r = qpld(mat, row, verbose)
+    qe, pe = zip(
+        *[
+            make_entire(QPoly(_q, mat[0, 0].gen), c_gen) if not _q.is_zero else (_q, _r)
+            for _q, _r in zip(q.flat(), r.flat())
+        ]
+    )
+    # re = r - sp.Matrix(pe).T @ y
+    return qe, None
 
 
-def get_column_reduction_transform(mat, col, p_gen, gp_gen=None):
+def get_column_reduction_transform(mat, col, p_gen, q_gen=None):
     l_mat = sp.Matrix.eye(mat.shape[0])
-    for i in range(col + 1, mat.shape[0]):
-        x = QPoly(mat[i, col], gp_gen)
-        y = QPoly(mat[col, col], gp_gen)
-        # x = mat[i, col]
-        # y = mat[col, col]
-        qe, re = qplde(x, y, p_gen)
-        l_mat[i, col] = -qe.as_expr()
-        # l_mat[i, col] = -qe
+    if col is not None:
+        # reduce single column
+        y = QPoly(mat[col, col], q_gen)
+        for i in range(col + 1, mat.shape[0]):
+            x = QPoly(mat[i, col], q_gen)
+            qe, re = qplde_single(x, y, p_gen)
+            l_mat[i, col] = -qe.as_expr()
+    else:
+        # reduce multiple columns at once
+        mq = mat.applyfunc(lambda x: QPoly(x, q_gen))
+        for i in range(1, mat.shape[0]):
+            qe, _ = qplde(mq, i, p_gen)
+            l_mat[i, :i] = [[-_qe.as_expr() for _qe in qe]]
     return l_mat
 
 
 def reduce_matrix_shifts(
     mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol
 ) -> Tuple[sp.Matrix, sp.Matrix]:
-    # red_mat = mat.applyfunc(lambda x: QPoly(x, q_gen))
-    red_mat = mat.copy()
-    check_canonical_form(red_mat, p_gen, q_gen)
+    check_canonical_form(mat, p_gen, q_gen)
 
+    row_degs = sorted(set(get_row_degrees(mat, q_gen)))
+    diffs = [row_degs[i + 1] - row_degs[i] for i in range(len(row_degs) - 1)]
+    it_cnt = sp.ceiling((max(row_degs) - min(row_degs)) / min(diffs))
+
+    red_mat = mat.copy()
     l_mat = sp.Matrix.eye(mat.shape[0])
-    for i in range(1, mat.shape[0]):
-        print(f"Reducing row {i}")
-        for j in range(mat.shape[0] - 1):
-            print(f"Reducing col {j}")
-            lc = get_column_reduction_transform(red_mat, j, p_gen, q_gen)
-            red_mat = lc @ red_mat
+    for i in range(it_cnt):
+        print(f"Iteration {i}:")
+        if len(row_degs) == mat.shape[0]:
+            # unique shifts
+            for j in range(mat.shape[1] - 1):
+                print(f"Reducing col {j}")
+                lc = get_column_reduction_transform(red_mat, j, p_gen, q_gen)
+                l_mat = lc @ l_mat
+                red_mat = lc @ red_mat
+        if len(row_degs) < mat.shape[0]:
+            # equivalent shifts
+            lc = get_column_reduction_transform(red_mat, None, p_gen, q_gen)
             l_mat = lc @ l_mat
-            if 0:
-                # red_mat = red_mat.applyfunc(sp.simplify)
-                red_mat = red_mat.applyfunc(lambda x: QPoly(x, q_gen))
-                # red_mat = red_mat.applyfunc(lambda x: GenPoly(x, gp_gen).as_expr())
-            # l_mat = (lc @ l_mat).applyfunc(lambda x: GenPoly(x, gp_gen))
+            red_mat = lc @ red_mat
+        row_degs = sorted(set(get_row_degrees(red_mat, q_gen)))
+        sp.pprint(red_mat.applyfunc(lambda x: QPoly(x, q_gen).degree().evalf()))
 
     return red_mat, l_mat
 
@@ -568,7 +688,9 @@ def sort_shift_intervals(
 
 
 def move_col_degrees_on_diagonal(
-    mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol  = None,
+    mat: sp.Matrix,
+    p_gen: sp.Symbol,
+    q_gen: sp.Symbol = None,
 ) -> Tuple[sp.Matrix, sp.Matrix]:
     """
     Compute a permutation that moves the highest derivatives from each column on the main diagonal
@@ -650,8 +772,8 @@ def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol):
     # 2: shifts
     (l_cffs, l_degs), (t_cffs, t_degs) = get_matrix_terms(mat, q_gen)
     s_degs = l_degs - t_degs
-    row_degs = [max(s_degs[r,:]) for r in range(mat.shape[0])]
-    row_degs_m = [min(t_degs[r,:]) for r in range(mat.shape[0])]
+    row_degs = [max(s_degs[r, :]) for r in range(mat.shape[0])]
+    row_degs_m = [min(t_degs[r, :]) for r in range(mat.shape[0])]
     # row_degs_p = [max(l_degs[r,:]) for r in range(mat.shape[0])]
 
     # 2a: leading delays of each row must be the same
@@ -663,14 +785,16 @@ def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol):
         raise ValueError("Leading row shift intervals must be ascending.")
 
 
-def check_col_degrees_on_diagonal(mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol=None) -> Any:
+def check_col_degrees_on_diagonal(
+    mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol = None
+) -> Any:
     if q_gen is not None:
         q_cffs, q_degs = get_leading_term_matrix(mat, q_gen)
         lccm = get_lccm(q_cffs, p_gen)
     else:
         lccm = get_lccm(mat, p_gen)
 
-    if not all([lccm[i,i] != 0 for i in range(lccm.shape[0])]):
+    if not all([lccm[i, i] != 0 for i in range(lccm.shape[0])]):
         raise ValueError(
             f"Given matrix does not have highest degrees w.r.t {p_gen} on the main diagonal."
         )
