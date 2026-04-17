@@ -835,11 +835,8 @@ def random_partition_m_parts(n, m):
     """Generate a random partition of n into exactly m parts."""
     if m < 1:
         raise ValueError("m must be greater than 1")
-    if m > n:
-        n += m
-        pad = 1
-    else:
-        pad = 0
+    # pad the input as ordered partitions generates no zero entries
+    n += m
 
     # form all possible partitions, choose one and shuffle it
     all_partitions = [list(p) for p in ordered_partitions(n, m)]
@@ -847,6 +844,6 @@ def random_partition_m_parts(n, m):
     shuffle(part)
 
     # remove padding
-    part[:] = [p-pad for p in part]
+    part[:] = [p-1 for p in part]
 
     return part
