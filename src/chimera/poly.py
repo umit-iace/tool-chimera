@@ -424,10 +424,13 @@ def column_reduced_form(
 
     Returns: Tuple(S, U)
     """
+    assert mat.rank() == min(*mat.shape)
     m = mat.copy()
     u = sp.Matrix.eye(m.shape[1])
     # u = m.eye(m.shape[1], m.domain)
-    while not is_col_reduced(m, sym) and sym in m.free_symbols:
+    if sym not in mat.free_symbols:
+        return m, u
+    while not is_col_reduced(m, sym):
         # sort into decreasing column degrees
         cds = get_leading_column_degrees(m, sym)
         if sorted(cds, reverse=True) != cds:
@@ -479,11 +482,6 @@ def column_reduced_form(
         m.simplify()
         u = u @ r
 
-    if sym not in m.free_symbols:
-        raise ValueError(
-            f"Provided matrix of dim {m.shape} is singular with rank {m.rank()}"
-        )
-
     return m, u
 
 
@@ -508,11 +506,8 @@ def random_poly_mat(m, n, order, c_min, c_max, p_gen):
 
 def random_col_reduced_mat(m, n, coldeg_sum, c_min, c_max, p_gen):
     cds = random_partition_m_parts(coldeg_sum, n)
-    while True:
+    mat = sp.Matrix.zeros(m, n)
+    while mat.rank() < min(m, n):
         mat = random_poly_mat(m, n, cds, c_min, c_max, p_gen)
-        try:
-            mat, _ = column_reduced_form(mat, p_gen)
-        except ValueError:
-            continue
-        break
+    mat, _ = column_reduced_form(mat, p_gen)
     return mat
