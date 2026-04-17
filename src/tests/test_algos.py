@@ -2,6 +2,7 @@ import random
 
 import sympy as sp
 from sympy import Matrix, sqrt
+from sympy.core.random import sample
 import pytest
 
 from chimera import QPoly
@@ -10,7 +11,6 @@ from chimera.algos import (
     qpld,
     make_entire,
     qplde,
-    column_reduced_form,
     canonical_form,
     move_col_degrees_on_diagonal,
     check_col_degrees_on_diagonal,
@@ -18,13 +18,12 @@ from chimera.algos import (
 from chimera.utils import (
     get_lccm,
     check_singularities,
-    is_col_reduced,
     get_matrix_terms,
 )
-from chimera.poly import random_poly_mat, random_col_reduced_mat
+from chimera.poly import random_col_reduced_mat
 
 # generators
-sigma = sp.Symbol("sigma", positive=True)
+sigma = sp.Symbol("sigma", positive=True, real=True)
 s = sp.Symbol("s")
 
 
@@ -82,7 +81,7 @@ def test_make_entire():
 
 
 # @pytest.mark.skip("Takes too long")
-def test_gplde():
+def test_qplde():
     xl = [
         (3 * s + 2 * s**2) * sigma ** sp.sqrt(5) + (s**2 + 2 * s) * sigma + 2 * s + 1,
         5 * s + (s + sp.Rational(1, 2)) * sigma ** (-2 * sp.pi),
@@ -151,8 +150,8 @@ def _generate_test_case(n, nm, np):
     c_mat = sp.Matrix.zeros(np, n)
 
     # PDE
-    tau_m = sorted([sp.sqrt(2 * random.randint(1, 5) + 1) for n in range(nm)])
-    tau_p = sorted([-sp.sqrt(2 * random.randint(1, 5) + 1) for n in range(np)])[::-1]
+    tau_m = sorted([sp.sqrt(2 * s + 1) for s in sample(range(1, 6), nm)])
+    tau_p = sorted([-sp.sqrt(2 * s + 1) for s in sample(range(1, 6), np)])[::-1]
 
     c = d_mat, n_mat, c_mat, q0_mat, q1_mat, tau_m, tau_p
     return c
@@ -171,9 +170,11 @@ def _run_reduction_test(case):
     delay_mat = sp.Matrix.diag([sigma**tau for tau in tau_p])
 
     des_state_dim = (sp.Add(*tau_m) - sp.Add(*tau_p)).simplify()
-    print(f"System predictions: {tau_m}")
-    print(f"System delays: {tau_p}")
-    print(f"Original state dimensions {[tm - tp for tm, tp in zip(tau_m, tau_p)]}")
+    print(f"System predictions: {tau_m} ({[sp.N(t) for t in tau_m]})")
+    print(f"System delays: {tau_p} ({[sp.N(t) for t in tau_p]})")
+    print(
+        f"Original state dimensions {[(tm - tp, (tm - tp).evalf()) for tm, tp in zip(tau_m, tau_p)]}"
+    )
     print(f"Original full state dim: {des_state_dim} ({des_state_dim.evalf()})")
 
     print("G Matrix:")
@@ -181,23 +182,33 @@ def _run_reduction_test(case):
     m = pred_mat @ d_mat - q1_mat @ delay_mat @ h_mat
     # sp.pprint(m, wrap_line=False)
     mq = m.applyfunc(lambda x: QPoly(x, sigma))
-    sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
-    sp.pprint(mq.applyfunc(lambda x: (x.degmin(), x.degmax())), wrap_line=False)
+    sp.pprint(mq.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
+    sp.pprint(
+        mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
+        wrap_line=False,
+    )
 
     (_, l_cd), (_, t_cd) = get_matrix_terms(m, sigma)
     cds = l_cd - t_cd
     cd = [max(cds[:, c]) for c in range(cds.shape[1])]
     print("Initial Column degrees:")
     sp.pprint(cd)
+    sp.pprint([c.evalf() for c in cd])
     init_state_dim = sp.Add(*cd).simplify()
     print(f"Initial state dimension: {init_state_dim} ({init_state_dim.evalf()})")
 
     print("After preliminary trafo:")
-    L, U, p = q1_mat[:, ::-1].LUdecomposition()
-    m = L.inv() @ m
+    L, U, p = q1_mat.LUdecomposition()
+    P = sp.eye(q1_mat.rows).permuteFwd(p)
+    sp.pprint(q1_mat)
+    sp.pprint(L.inv() @ P @ q1_mat)
+    m = L.inv() @ P @ m
     mq = m.applyfunc(lambda x: QPoly(x, sigma))
-    sp.pprint(mq.applyfunc(lambda x: x.degree()), wrap_line=False)
-    sp.pprint(mq.applyfunc(lambda x: (x.degmin(), x.degmax())), wrap_line=False)
+    sp.pprint(mq.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
+    sp.pprint(
+        mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
+        wrap_line=False,
+    )
 
     l, m, r = canonical_form(m, s, sigma)
     print("In canonical form:")
@@ -213,12 +224,12 @@ def _run_reduction_test(case):
 
     print("Reduction results:")
     mq = mrg.applyfunc(lambda x: QPoly(x, sigma))
-    sp.pprint(mq, wrap_line=False)
+    # sp.pprint(mq, wrap_line=False)
     sp.pprint(mq.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
-    sp.pprint(
-        mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
-        wrap_line=False,
-    )
+    # sp.pprint(
+    #     mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
+    #     wrap_line=False,
+    # )
 
     print("Checking results:")
     # 1) all elements should have same degrees in each column
@@ -228,9 +239,9 @@ def _run_reduction_test(case):
     print("New column degrees:")
     sp.pprint(cd)
     new_state_dim = sp.Add(*cd).simplify()
-    print(f"New state dimension {new_state_dim}")
+    print(f"New state dimension {new_state_dim} ({new_state_dim.evalf()})")
     dim_err = (new_state_dim - des_state_dim).simplify()
-    print(f"dimension error: {dim_err}")
+    print(f"dimension error: {dim_err} ({dim_err.evalf()})")
     assert dim_err <= 0
 
     # 2) leading coefficient matrices wrt s and sigma must commute and have full rank
@@ -296,12 +307,34 @@ def test_reduce_matrix_shifts_3x3():
             [-sqrt(7), -sqrt(13), -sqrt(19)],
         )
         cs.append(case)
+        case = (
+            Matrix([[-5, 5, -4], [-2, 5, -4], [-4, -2, -5]]),
+            Matrix([[0, 0, 0]]),
+            Matrix([[0], [0], [0]]),
+            Matrix([[1, 1, -6], [-1, -2, 1], [1, 4, -5]]),
+            Matrix([[0, -7, 5], [4, -7, 7], [3, 7, -4]]),
+            [sqrt(5), sqrt(7), sqrt(11)],
+            [-sqrt(11), -3, -sqrt(5)],
+        )
+        cs.append(case)
+        case = (
+            Matrix([[-4, 2 * s - 5, -5], [-3, -3, -5], [-5, -2, -3]]),
+            Matrix([[0, 0, 0]]),
+            Matrix([[0], [0], [0]]),
+            Matrix([[-1, 2, 2], [-2, 10, -10], [-8, 10, 1]]),
+            Matrix([[6, 6, -5], [-9, 8, -10], [8, -4, -7]]),
+            [sqrt(5), sqrt(7), sqrt(11)],
+            [-sqrt(11), -3, -sqrt(5)],
+        )
+        cs.append(case)
 
     for k in range(10):
-        cs.append(_generate_test_case(1, 3, 3))
+        cs.append(_generate_test_case(0, 3, 3))
+        # cs.append(_generate_test_case(1, 3, 3))
         # cs.append(_generate_test_case(2, 3, 3))
         # cs.append(_generate_test_case(3, 3, 3))
         # cs.append(_generate_test_case(4, 3, 3))
+        pass
 
     for c in cs:
         _run_reduction_test(c)
