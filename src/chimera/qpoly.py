@@ -14,7 +14,7 @@ class QPoly(sp.Basic):
     """
 
     is_commutative = True
-    is_GenPoly = True
+    is_QPoly = True
 
     def __new__(cls, rep, *gens):
         """Create a new generalised polynomial instance out of something useful."""
@@ -200,6 +200,9 @@ class QPoly(sp.Basic):
     def as_coeff_Mul(self, *deps, **kwargs):
         return self.as_expr().as_coeff_Mul(*deps, **kwargs)
 
+    def as_coeff_Add(self, *deps, **kwargs):
+        return self.as_expr().as_coeff_Add(*deps, **kwargs)
+
     def as_numer_denom(self):
         """
         Return GenPoly with coefficient numerators as well as their common denominator
@@ -351,8 +354,12 @@ class QPoly(sp.Basic):
             return m
 
     def LM(self, s_dict: dict = None):
-        """Return the Leading monom"""
+        """Return the leading monom"""
         return QPoly.from_list([(self.degmax(), self.rep[self.degmax()])], self.gen)
+
+    def TM(self, s_dict: dict = None):
+        """Return the trailing monom"""
+        return QPoly.from_list([(self.degmin(), self.rep[self.degmin()])], self.gen)
 
     def LC(self, s_dict: dict = None) -> sp.Expr:
         """Return the Leading coefficient"""
