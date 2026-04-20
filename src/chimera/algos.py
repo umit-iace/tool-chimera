@@ -361,62 +361,71 @@ def qpld(
     #             raise ValueError("Only arguments of type GenPoly supported")
     #         assert _x.gen == _y.gen
 
-    y_dmax = [_y.degmax() for _y in y]
-    print("Degrees of reduction terms:")
-    print([__y.evalf() for __y in y_dmax])
-    y_dmin = [_y.degmin() for _y in y]
+    if verbose:
+        print("Degrees of reduction terms:")
+        y_dmax = [_y.degmax() for _y in y]
+        print([__y.evalf() for __y in y_dmax])
+        y_dmin = [_y.degmin() for _y in y]
+        print([__y.evalf() for __y in y_dmin])
 
     q = sp.Matrix([QPoly(0, _x.gen) for _x in x])
     r = x.copy()
     while True:
-        r = r.applyfunc(lambda x: QPoly(x, y[0].gen))
-        r_dmax = [_r.degmax() for _r in r]
-        r_dmin = [_r.degmin() for _r in r]
+        # r = r.applyfunc(lambda x: QPoly(x, y[0].gen))
 
-        print("Degrees of remainder:")
-        print([d.evalf() for d in r_dmax])
-
-        degmax_correct = [
-            sp.assumptions.ask(rdm <= _y.degmax()) for rdm, _y in zip(r_dmax, y)
-        ]
-        degmin_correct = [
-            sp.assumptions.ask(rdm >= _y.degmin()) for rdm, _y in zip(r_dmin, y)
-        ]
-
-        # if any(degmax_correct is None) or any(degmin_correct is None):
-        #     raise ValueError(
-        #         "Degree order cannot be decided. Make sure that"
-        #         "the given expressions exponents to not contain"
-        #         "any symbols."
-        #     )
-        #
         if verbose:
-            print()
-            print(f"Current pred degrees: {r_dmax} < {y_dmax}? {degmax_correct}")
-            print(f"Current delay degrees: {r_dmin} > {y_dmin}? {degmin_correct}")
+            print("Degrees of remainder:")
+            r_dmax = [_r.degmax() for _r in r]
+            print([d.evalf() for d in r_dmax])
+            r_dmin = [_r.degmin() for _r in r]
+            print([d.evalf() for d in r_dmin])
 
-        a_mat = sp.Matrix.zeros(row, row)
-        b_vec = sp.Matrix.zeros(row, 1)
-        c_mat = sp.Matrix.zeros(row, row)
-        for i, (dmax, dmin) in enumerate(zip(degmax_correct, degmin_correct)):
-            c_mat[i, :] = [[mat[j, i].as_expr() for j in range(row)]]
-            if not all(degmax_correct):
-                # reduce predictions
-                a_mat[i, :] = [[mat[j, i].LM().as_expr() for j in range(row)]]
-                b_vec[i] = r[i].LM().as_expr()
-            elif not dmin:
-                # reduce delays
-                a_mat[i, :] = [[mat[j, i].TM().as_expr() for j in range(row)]]
-                b_vec[i] = r[i].TM().as_expr()
+        # check col compatibilities
+        compat_max = []
+        compat_min = []
+        for _y in y:
+            dmax = []
+            dmin = []
+            for _r in r:
+                max_c = sp.assumptions.ask(_r.degmax() > _y.degmax())
+                dmax.append(max_c)
+                min_c = sp.assumptions.ask(_r.degmin() < _y.degmin())
+                dmin.append(min_c)
+                if max_c is None or min_c is None:
+                    raise ValueError(
+                        "Degree order cannot be decided. Make sure that"
+                        "the given expressions exponents to not contain"
+                        "any symbols."
+                    )
+            compat_max.append(all(dmax))
+            compat_min.append(all(dmin))
+
+        al = []
+        bl = []
+        cl = []
+        rl = []
+        for i in range(row):
+            cl.append([mat[j, i].as_expr() for j in range(row)])
+            if compat_max[i]:
+                al.append([mat[j, i].LM().as_expr() for j in range(row) if compat_max[j]])
+                bl.append(r[i].LM().as_expr())
+            elif compat_min[i]:
+                al.append([mat[j, i].TM().as_expr() for j in range(row) if compat_min[j]])
+                bl.append(r[i].TM().as_expr())
             else:
                 continue
-        if b_vec == sp.Matrix.zeros(row, 1):
+            rl.append([1 if i == j else 0 for j in range(row)])
+        a_mat = sp.Matrix(al)
+        b_vec = sp.Matrix(bl)
+        c_mat = sp.Matrix(cl)
+        rej_mat = sp.Matrix(rl).T
+
+        if rej_mat.shape == (0,0):
             # no further reduction necessary
             break
 
-        q_k = a_mat.inv() @ b_vec
-        r = r.applyfunc(lambda x: x.as_expr()) - c_mat @ q_k
-        # q += q_k.applyfunc(lambda x: QPoly(x, y[0].gen))
+        q_k = rej_mat @ a_mat.inv() @ b_vec
+        r = r - c_mat @ q_k
         q += q_k
 
     return q, r
@@ -627,22 +636,26 @@ def reduce_matrix_shifts(
 
     red_mat = mat.copy()
     l_mat = sp.Matrix.eye(mat.shape[0])
-    for i in range(it_cnt):
-        print(f"Iteration {i}:")
-        if len(row_degs) == mat.shape[0]:
-            # unique shifts
-            for j in range(mat.shape[1] - 1):
-                print(f"Reducing col {j}")
-                lc = get_column_reduction_transform(red_mat, j, p_gen, q_gen)
+    if 0:
+        for i in range(it_cnt):
+            print(f"Iteration {i}:")
+            if len(row_degs) == mat.shape[0]:
+                # unique shifts
+                for j in range(mat.shape[1] - 1):
+                    print(f"Reducing col {j}")
+                    lc = get_column_reduction_transform(red_mat, j, p_gen, q_gen)
+                    l_mat = lc @ l_mat
+                    red_mat = lc @ red_mat
+            if len(row_degs) < mat.shape[0]:
+                # equivalent shifts
+                lc = get_column_reduction_transform(red_mat, None, p_gen, q_gen)
                 l_mat = lc @ l_mat
                 red_mat = lc @ red_mat
-        if len(row_degs) < mat.shape[0]:
-            # equivalent shifts
-            lc = get_column_reduction_transform(red_mat, None, p_gen, q_gen)
-            l_mat = lc @ l_mat
-            red_mat = lc @ red_mat
-        row_degs = sorted(set(get_row_degrees(red_mat, q_gen)))
-        sp.pprint(red_mat.applyfunc(lambda x: QPoly(x, q_gen).degree().evalf()))
+            row_degs = sorted(set(get_row_degrees(red_mat, q_gen)))
+            sp.pprint(red_mat.applyfunc(lambda x: QPoly(x, q_gen).degree().evalf()))
+    else:
+        l_mat = get_column_reduction_transform(red_mat, None, p_gen, q_gen)
+        red_mat = l_mat @ red_mat
 
     return red_mat, l_mat
 
