@@ -633,8 +633,8 @@ def canonical_form(
     * Homogenise the leading row delays
     """
     m, l_mat = sort_shift_intervals(mat, q_gen)
-    m, r_mat = move_col_degrees_on_diagonal(m, p_gen, q_gen)
     m, hom_trafo = homogenise_leading_shifts(m, q_gen, mode="delay")
+    m, r_mat = move_col_degrees_on_diagonal(m, p_gen, q_gen)
     return hom_trafo @ l_mat, m, r_mat
 
 
@@ -664,32 +664,42 @@ def sort_shift_intervals(
 def move_col_degrees_on_diagonal(
     mat: sp.Matrix,
     p_gen: sp.Symbol,
-    q_gen: sp.Symbol = None,
+    q_gen: sp.Symbol,
 ) -> Tuple[sp.Matrix, sp.Matrix]:
     """
     Compute a permutation that moves the highest derivatives from each column on the main diagonal
     """
-    # extract column degrees
-    if q_gen is not None:
-        # if specified, only look at coefficients of largest predictions
-        q_cffs, q_degs = get_leading_term_matrix(mat, q_gen)
-        p_cffs, p_degs = get_leading_term_matrix(q_cffs, p_gen)
-    else:
-        p_cffs, p_degs = get_leading_term_matrix(mat, p_gen)
-    p_col_degs = [max(p_degs[:, c]) for c in range(p_degs.cols)]
+    (qlc, qld), (qtc, qtd) = get_matrix_terms(mat, q_gen)
+    qt_row_degs = [min(qtd[r, :]) for r in range(mat.shape[0])]
+    rel_qt_row_degs = [
+        qt_row_degs[i + 1] - qt_row_degs[i] for i in range(len(qt_row_degs) - 1)
+    ]
+    # make sure that we work with homogenised delays
+    assert all([lrd == qt_row_degs[0] for lrd in qt_row_degs])
+
+    # extract column degrees but only look at coefficients of largest predictions
+    plc, pld = get_leading_term_matrix(qlc, p_gen)
+    p_col_degs = [max(pld[:, c]) for c in range(pld.cols)]
 
     # check compatibilities
-    r_compat = [set() for c in range(p_degs.cols)]
-    for r in range(p_degs.rows):
-        for c in range(p_degs.cols):
-            if p_degs[r, c] == p_col_degs[c]:
-                r_compat[c].add(r)
+    r_compat = [set() for c in range(pld.cols)]
+    for r in range(pld.rows):
+        for c in range(pld.cols):
+            # element must have col degree
+            if pld[r, c] != p_col_degs[c]:
+                continue
+            if r < pld.rows - 1:
+                # element must have compatible relative row degree
+                delta_d = abs(qtd[r, c] - qtd[r + 1, c])
+                if delta_d != rel_qt_row_degs[r]:
+                    continue
+            r_compat[c].add(r)
     if any([not s for s in r_compat]):
         raise ValueError(
             "Properties not obtainable by reordering, Matrix is probably not column reduced."
         )
 
-    col_compat = list(zip(list(range(p_degs.cols)), r_compat))
+    col_compat = list(zip(list(range(pld.cols)), r_compat))
 
     # sort entries first that only fit a few rows
     col_compat.sort(key=lambda x: len(x[1]))
