@@ -2,6 +2,7 @@
 Custom algorithms for the project
 """
 
+import logging
 from typing import Union, Tuple, Any
 
 import sympy as sp
@@ -18,6 +19,8 @@ from .utils import (
 )
 
 __all__ = ["qpld", "make_entire", "qplde", "eliminate_delays", "reduce_matrix_shifts"]
+
+logger = logging.getLogger(__name__)
 
 
 def gcdexs(
@@ -328,59 +331,44 @@ def hermite_form(mat: sp.Matrix, p_gen: sp.Symbol, s_gen: sp.Symbol):
     return mt, u_mat, ui_mat
 
 
-def qpld(
-    mat: sp.Matrix,
-    row: int,
-    verbose: bool = False,
-) -> tuple[sp.Matrix, sp.Matrix]:
+def qplde(mat: sp.Matrix, row: int, c_gen: sp.Symbol) -> tuple[sp.Matrix, sp.Matrix]:
     """
-    Perform quasipolynomial long division
+    Perform modified quasipolynomial long division
 
-    This function will compute quasipolynomials  q and r,
-    such that x = qy +r with deg(r) < deg(y).
+    This function will compute vectors of quasipolynomials q and r
+    such that the one row of the given matrix (called x in the following)
+    will be reduced by means of the elements above it.
 
     Note:
-        No care is taken of the coefficients and it is assumed that they
-        support division.
+        Care is taken, such that the resulting components in
+        q and r remain whole functions.
 
     Args:
-        x (QPoly): Expression to be divided
-        y (QPoly): Expression to divide by
-        verbose (bool): If True, be verbose about what steps are taken
+        mat (Matrix of QPolys): Matrix to be "divided"
+        row (int): Row of the matrix to be divided
+        c_gen (sp.Symbol): Generator of the coefficient polynomials
 
     Returns:
-        Tuple (q,r) of quotient quasipolynomial and remainder matrices.
+        Tuple (q,r) of quotient quasipolynomial and remainder vectors.
     """
+    for elem in mat.iter_values():
+        assert isinstance(elem, QPoly)
+        assert elem.gen == mat[0, 0].gen
+
     x = mat[row, :row].T
     y = mat.diagonal()[:row, :row].T
-
-    # for _, _y in y.items():
-    #     assert _y != 0
-    #     for _, _x in x.items():
-    #         if not isinstance(_y, QPoly) or not isinstance(_y, QPoly):
-    #             raise ValueError("Only arguments of type GenPoly supported")
-    #         assert _x.gen == _y.gen
-
-    if verbose:
-        print("Degrees of reduction terms:")
-        y_dmax = [_y.degmax() for _y in y]
-        print([__y.evalf() for __y in y_dmax])
-        y_dmin = [_y.degmin() for _y in y]
-        print([__y.evalf() for __y in y_dmin])
+    logger.debug(
+        f"Degrees of divisors: {[(q.degmin().evalf(), q.degmax().evalf()) for q in y]}"
+    )
 
     q = sp.Matrix([QPoly(0, _x.gen) for _x in x])
     r = x.copy()
     while True:
-        # r = r.applyfunc(lambda x: QPoly(x, y[0].gen))
+        logger.debug(
+            f"Degrees of remainder: {[(q.degmin().evalf(), q.degmax().evalf()) for q in r]}"
+        )
 
-        if verbose:
-            print("Degrees of remainder:")
-            r_dmax = [_r.degmax() for _r in r]
-            print([d.evalf() for d in r_dmax])
-            r_dmin = [_r.degmin() for _r in r]
-            print([d.evalf() for d in r_dmin])
-
-        # check col compatibilities
+        # check column compatibilities
         compat_max = []
         compat_min = []
         for _y in y:
@@ -407,10 +395,14 @@ def qpld(
         for i in range(row):
             cl.append([mat[j, i].as_expr() for j in range(row)])
             if compat_max[i]:
-                al.append([mat[j, i].LM().as_expr() for j in range(row) if compat_max[j]])
+                al.append(
+                    [mat[j, i].LM().as_expr() for j in range(row) if compat_max[j]]
+                )
                 bl.append(r[i].LM().as_expr())
             elif compat_min[i]:
-                al.append([mat[j, i].TM().as_expr() for j in range(row) if compat_min[j]])
+                al.append(
+                    [mat[j, i].TM().as_expr() for j in range(row) if compat_min[j]]
+                )
                 bl.append(r[i].TM().as_expr())
             else:
                 continue
@@ -420,13 +412,15 @@ def qpld(
         c_mat = sp.Matrix(cl)
         rej_mat = sp.Matrix(rl).T
 
-        if rej_mat.shape == (0,0):
+        if rej_mat.shape == (0, 0):
             # no further reduction necessary
             break
 
-        q_k = rej_mat @ a_mat.inv() @ b_vec
+        q_r = rej_mat @ a_mat.inv() @ b_vec
+        q_e = q_r.applyfunc(lambda x: make_entire(QPoly(x, mat[0, 0].gen), c_gen)[0])
+        q_k = q_e.applyfunc(lambda x: x.as_expr())
         r = r - c_mat @ q_k
-        q += q_k
+        q = q + q_k
 
     return q, r
 
@@ -453,6 +447,8 @@ def make_entire(
         GenPoly, Expr: Tuple of the resulting expression without singularities (entire function in rat_sym)
         as well as the correcting factor.
     """
+    if expr.is_zero:
+        return expr, sp.S.Zero
     if gen_expr is None:
         gen_expr = sp.exp(rat_sym)
     if rat_sym not in gen_expr.free_symbols:
@@ -570,41 +566,6 @@ def qpld_single(
         q += q_k
 
     return q, r
-
-
-def qplde(
-    mat: sp.Matrix,
-    row: int,
-    c_gen: sp.Symbol,
-    verbose: bool = False,
-) -> tuple[sp.Matrix, sp.Matrix]:
-    """
-    Perform  modified quasipolynomial long division
-
-    This function will compute  quasipolynomials q and r,
-    such that x = qy +r with deg(r) = deg(y).
-
-    Note:
-        Care is taken, such that the resulting q and r remain whole functions
-
-    Args:
-        x (QPoly): Expression to be divided
-        y (QPoly): Expression to divide by
-        c_gen (sp.Symbol): Generator of the coefficient polynomials
-        verbose (bool): If True, be verbose about what steps are taken
-
-    Returns:
-        Tuple (q,r) of quotient quasipolynomial and remainder.
-    """
-    q, r = qpld(mat, row, verbose)
-    qe, pe = zip(
-        *[
-            make_entire(QPoly(_q, mat[0, 0].gen), c_gen) if not _q.is_zero else (_q, _r)
-            for _q, _r in zip(q.flat(), r.flat())
-        ]
-    )
-    # re = r - sp.Matrix(pe).T @ y
-    return qe, None
 
 
 def get_column_reduction_transform(mat, col, p_gen, q_gen=None):
