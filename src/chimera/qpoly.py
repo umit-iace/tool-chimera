@@ -1,3 +1,4 @@
+from collections import defaultdict
 from functools import reduce
 from typing import Union
 
@@ -48,8 +49,6 @@ class QPoly(sp.Basic):
 
     @classmethod
     def from_dict(cls, exp_coeff_map: dict, *gens: sp.Symbol):
-        if not exp_coeff_map:
-            return S.Zero
         red_map = {deg: cff for deg, cff in exp_coeff_map.items() if cff != 0}
         return cls.new(red_map, *gens)
 
@@ -133,7 +132,7 @@ class QPoly(sp.Basic):
         # join coefficients
         fd = f.as_dict()
         gd = g.as_dict()
-        rd = {exp: fd[exp] + gd[exp] for exp in common_exps}
+        rd = {exp: (fd[exp] + gd[exp]).expand().cancel() for exp in common_exps}
         rd.update({exp: fd[exp] for exp in f_only_exps})
         rd.update({exp: gd[exp] for exp in g_only_exps})
 
@@ -169,7 +168,7 @@ class QPoly(sp.Basic):
                 rd = fd + gd
                 rc = fc * gc
                 if rd in r_dict:
-                    r_dict[rd] += rc
+                    r_dict[rd] = (r_dict[rd] + rc).expand().cancel()
                 else:
                     r_dict[rd] = rc
         return QPoly.from_dict(r_dict, f.gen)
@@ -265,45 +264,8 @@ class QPoly(sp.Basic):
             else:
                 print("Warning compound generators may cause problems")
 
-        e_c_map = {}
-        expr = expr.expand(power_exp=False)
-        for term in sp.Add.make_args(expr):
-            coeff = []
-            exp = []
-            term = term.expand(power_exp=False).factor(gen)
-            for factor in sp.Mul.make_args(term):
-                factor = factor.collect(gen**w).collect(gen)
-                for sub_factor in sp.Mul.make_args(factor):
-                    if not sub_factor.has_free(gen):
-                        coeff.append(sub_factor)
-                    else:
-                        # TODO write new function that takes the actual generator to make the process more robust
-                        p_base, p_exp = sub_factor.as_base_exp()
-                        if p_base != gen:
-                            if isinstance(p_base, sp.Pow) and p_base.args[0] == gen:
-                                # push symbol from the base into the exponent
-                                p_exp *= p_base.args[1]
-                            elif isinstance(p_base, sp.Mul) and p_base.args[0] == gen:
-                                # power of one found, use remaining factors for coeff
-                                p_exp *= 1
-                                coeff.append(p_base.args[1])
-                            else:
-                                error = ValueError(
-                                    f"The computed base {p_base} does not match the generator {gen}"
-                                )
-                                raise error
-                        if p_exp not in exp:
-                            exp.append(p_exp)
-            e = sp.Add(*exp)
-            c = sp.Mul(*coeff)
-            assert gen not in c.free_symbols
-            if e in e_c_map:
-                e_c_map[e] += c
-            else:
-                e_c_map[e] = c
-
-        red_map = {e: c.simplify() for e,c in e_c_map.items()}
-        return red_map
+        e_c_map = exponent_coeff_dict(expr, gen)
+        return e_c_map
 
     def as_expr(self) -> sp.Expr:
         return self.dict_to_expr(self.rep, self.gen)
@@ -385,3 +347,124 @@ class QPoly(sp.Basic):
             nc, dc = c.as_numer_denom()
             lcm = sp.lcm(lcm, dc)
         return lcm
+
+
+def to_base_exponent(term, gen):
+    """
+    Attempt to write `term` as coeff * gen**exp where coeff and exp do not
+    contain `gen`.
+
+    Note:
+        The splitting is conservative:
+      - Only factors that are exactly `sym` or `sym**e` (with e independent of `sym`)
+        are pulled into the exponent.
+      - Any other occurrence of `sym` in a factor causes failure.
+
+    Returns: Tuple(coeff, exp, ok), where ok is True on success.
+    """
+    # quick exit
+    if term == gen:
+        return sp.Integer(1), sp.Integer(1), True
+
+    # term is a pure power of the generator
+    if term.is_Pow and term.base == gen:
+        e = term.exp
+        if gen in e.free_symbols:
+            return None, None, False
+        return sp.Integer(1), e, True
+
+    # term is an atom (symbol/number) and not gen
+    if term.is_Atom:
+        # it either equals gen (already handled) or is independent of gen
+        if gen in term.free_symbols:
+            # atom involves sym in a non-power way (unlikely except sym itself)
+            return None, None, False
+        return term, sp.Integer(0), True
+
+    # a product, scan factors
+    if term.is_Mul:
+        coeff = sp.Integer(1)
+        exp = sp.Integer(0)
+        for f in sp.Mul.make_args(term):
+            if f == gen:
+                exp += 1
+                continue
+            if f.is_Pow and f.base == gen:
+                e = f.exp
+                if gen in e.free_symbols:
+                    return (None, None, False)
+                exp += e
+                continue
+            # a one-over term, parse the denominator and return its inverse
+            if f.is_Pow and f.exp == sp.S.NegativeOne and gen in f.base.free_symbols :
+                _c, _e, _ok = to_base_exponent(sp.factor_terms(f.base), gen)
+                coeff /= _c
+                exp -= _e
+                continue
+            # any other factor that contains gen makes it invalid
+            if gen in f.free_symbols:
+                return None, None, False
+            coeff *= f
+        return sp.simplify(coeff), sp.simplify(exp), True
+
+    # a power with non-sym base or other composite:
+    # - If it contains gen anywhere, we reject it
+    if gen in term.free_symbols:
+        return None, None, False
+
+    # Otherwise independent of sym -> constant term
+    return term, sp.Integer(0), True
+
+
+def exponent_coeff_dict(expr, gen, *, strict=True, expand=True):
+    """
+    Parse `expr` as a quasi polynomial in `sym`, collecting coefficients
+    by exponent: sum of c*sym**e with c,e independent of `sym`.
+
+    Parameters
+    ----------
+    expr : sp.Expr
+    gen : sp.Symbol
+    strict : bool (default True)
+        - If True, any term that cannot be written as c*sym**e with c,e
+          independent of `sym` raises ValueError.
+        - If False, such terms are accumulated in a remainder and returned.
+    expand : bool (default True)
+        - If True, expands `expr` before collecting. Set to False if you already
+          control the addends.
+
+    Returns
+    -------
+    dict[Expr, Expr]  (or tuple if strict=False)
+        Mapping exponent -> coefficient. Exponent 0 is the constant term.
+        If strict=False, also returns the symbolic remainder.
+
+    Notes
+    -----
+    - Combination is by SymPy structural equality of exponents.
+    - Only collects explicit factors whose base is exactly `sym`.
+    """
+    expr = sp.expand(expr) if expand else expr
+    terms = expr.as_ordered_terms() if expr.is_Add else [expr]
+
+    out = defaultdict(lambda: sp.Integer(0))
+    other = sp.Integer(0)
+
+    for t in terms:
+        tf = sp.factor_terms(t, fraction=True)
+        coeff, exp, ok = to_base_exponent(tf, gen)
+        if not ok:
+            if strict:
+                raise ValueError(f"Term {t} is not a separable c*{gen}**e with c,e independent of {gen}.")
+            else:
+                other += t
+                continue
+        out[exp] += coeff
+
+    # Prune zeros and simplify coefficients
+    out = {e: sp.simplify(c) for e, c in out.items() if not c.equals(0)}
+
+    if strict:
+        return out
+    else:
+        return out, sp.simplify(other)
