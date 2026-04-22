@@ -1,14 +1,16 @@
 import random
+import logging
 
 import sympy as sp
-from sympy import Matrix, sqrt
+from sympy import Matrix, sqrt, Integer
 from sympy.core.random import sample
 import pytest
 
 from chimera import QPoly
 from chimera.algos import (
     reduce_matrix_shifts,
-    qpld,
+    qpld_single,
+    qplde_single,
     make_entire,
     qplde,
     canonical_form,
@@ -22,12 +24,15 @@ from chimera.utils import (
 )
 from chimera.poly import random_col_reduced_mat
 
+# debugging
+lg = logging.getLogger("chimera.algos").setLevel(logging.DEBUG)
+
 # generators
 sigma = sp.Symbol("sigma", positive=True, real=True)
 s = sp.Symbol("s")
 
 
-def test_gpld():
+def test_gpld_single():
     xl = [
         3 * sigma ** sp.sqrt(5) + 1 * sigma + 5,
         5 + 2 * sigma ** (-2 * sp.pi),
@@ -43,7 +48,7 @@ def test_gpld():
         print(f"Dividing {x} by {y}:")
         xp = QPoly(x, sigma)
         yp = QPoly(y, sigma)
-        qp, rp = qpld(xp, yp, sigma)
+        qp, rp = qpld_single(xp, yp, sigma)
         r = rp.as_expr()
         q = qp.as_expr()
         print(f"q: {q}")
@@ -109,7 +114,7 @@ def test_qplde():
         print(f"Dividing {x} by {y}:")
         xp = QPoly(x, sigma)
         yp = QPoly(y, sigma)
-        qep, rep = qplde(xp, yp, s)
+        qep, rep = qplde_single(xp, yp, s)
         qe = qep.as_expr()
         re = rep.as_expr()
         # print(f"q: {qe}")
@@ -181,7 +186,7 @@ def _run_reduction_test(case):
     h_mat = q0_mat @ d_mat + c_mat @ n_mat
     m = pred_mat @ d_mat - q1_mat @ delay_mat @ h_mat
     # sp.pprint(m, wrap_line=False)
-    mq = m.applyfunc(lambda x: QPoly(x, sigma))
+    mq = m.applyfunc(lambda x: QPoly(x, sigma, s))
     sp.pprint(mq.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
     sp.pprint(
         mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
@@ -197,10 +202,11 @@ def _run_reduction_test(case):
     init_state_dim = sp.Add(*cd).simplify()
     print(f"Initial state dimension: {init_state_dim} ({init_state_dim.evalf()})")
 
-    print("After preliminary trafo:")
-    L, U, p = q1_mat.LUdecomposition()
-    P = sp.eye(q1_mat.rows).permuteFwd(p)
+    print("Coupling matrix Q1:")
     sp.pprint(q1_mat)
+    print("After preliminary trafo:")
+    L, U, p = q1_mat[:, ::-1].LUdecomposition()
+    P = sp.eye(q1_mat.rows).permuteFwd(p)
     sp.pprint(L.inv() @ P @ q1_mat)
     m = L.inv() @ P @ m
     mq = m.applyfunc(lambda x: QPoly(x, sigma))
@@ -221,15 +227,18 @@ def _run_reduction_test(case):
 
     # the actual function call
     mrg, lg = reduce_matrix_shifts(m, s, sigma)
+    if not isinstance(mrg[0, 0], QPoly):
+        mq = mrg.applyfunc(lambda x: QPoly(x, sigma))
+    else:
+        mq = mrg
 
     print("Reduction results:")
-    mq = mrg.applyfunc(lambda x: QPoly(x, sigma))
     # sp.pprint(mq, wrap_line=False)
     sp.pprint(mq.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
-    # sp.pprint(
-    #     mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
-    #     wrap_line=False,
-    # )
+    sp.pprint(
+        mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
+        wrap_line=False,
+    )
 
     print("Checking results:")
     # 1) all elements should have same degrees in each column
@@ -257,6 +266,47 @@ def test_reduce_matrix_shifts_2x2():
     print("2 x 2 cases:")
     cs = []
 
+    if 1:
+        case = (
+            Matrix([[5, 1], [-(s**2) + s + 4, -3]]),
+            Matrix([[0, 0], [0, 0]]),
+            Matrix([[0, 0], [0, 0]]),
+            Matrix([[-3, -1], [1, 8]]),
+            Matrix([[4, -8], [1, 10]]),
+            [sqrt(3), 3],
+            [-sqrt(5), -sqrt(11)],
+        )
+        cs.append(case)
+        case = (
+            Matrix([[-s, -3], [3 * s, 4 * s + 4]]),
+            Matrix([[0, 0], [0, 0]]),
+            Matrix([[0, 0], [0, 0]]),
+            Matrix([[-3, -8], [4, 9]]),
+            Matrix([[10, 8], [5, 5]]),
+            [sqrt(5), sqrt(11)],
+            [-sqrt(5), -sqrt(11)],
+        )
+        cs.append(case)
+        case = (
+            Matrix([[4 - s, -3], [4, -5]]),
+            Matrix([[0, 0]]),
+            Matrix([[0], [0]]),
+            Matrix([[2, -7], [10, 3]]),
+            Matrix([[1, 9], [-4, -3]]),
+            [sqrt(5), 3],
+            [-sqrt(7), -sqrt(11)],
+        )
+        cs.append(case)
+        case = (
+            Matrix([[3 - 3 * s, -4], [-3 * s, 4]]),
+            Matrix([[0, 0]]),
+            Matrix([[0], [0]]),
+            Matrix([[0, -1], [-10, -4]]),
+            Matrix([[9, -10], [10, 8]]),
+            [sqrt(7), sp.Integer(3)],
+            [-sqrt(5), -sp.Integer(3)],
+        )
+        cs.append(case)
     if 0:
         # pathological case: Due to the nearly similar predictions,
         # this will need several internal steps to reduce one entry
@@ -284,8 +334,23 @@ def test_reduce_matrix_shifts_2x2():
 def test_reduce_matrix_shifts_3x2():
     print("3 x 2 cases:")
     cs = []
+
+    if 1:
+        # this one takes particularly long
+        case = (
+            Matrix([[1, 3 * s + 2, -4], [5, -2, -2], [-5, 4 - s, 2]]),
+            Matrix([[0, 0, 0]]),
+            Matrix([[0], [0]]),
+            Matrix([[6, 3, 10], [-10, -5, -4]]),
+            Matrix([[5, 7], [10, -8], [5, 1]]),
+            [sqrt(5), sqrt(7), sqrt(11)],
+            [-sqrt(5), -3],
+        )
+        cs.append(case)
     for k in range(10):
-        cs.append(_generate_test_case(1, 3, 2))
+        # cs.append(_generate_test_case(1, 3, 2))
+        # cs.append(_generate_test_case(2, 3, 2))
+        pass
 
     for c in cs:
         _run_reduction_test(c)
@@ -296,6 +361,38 @@ def test_reduce_matrix_shifts_3x3():
     cs = []
 
     if 1:
+        case = (
+            Matrix([[4 * s - 1, s + 1, -5], [-1, -s - 4, -3], [3, 2 - 4 * s, -1]]),
+            Matrix([[0, 0, 0], [0, 0, 0]]),
+            Matrix([[0, 0], [0, 0], [0, 0]]),
+            Matrix([[-7, -9, 8], [3, 6, -8], [-6, 0, 4]]),
+            Matrix([[3, 7, 2], [4, -3, -2], [2, 0, 2]]),
+            [sqrt(5), sqrt(7), Integer(3)],
+            [-sqrt(3), -sqrt(7), -Integer(3)],
+        )
+        cs.append(case)
+        case = (
+            Matrix(
+                [[-5, 3, 4], [-1, 4, -3 * s**2 + s - 2], [2, -3, -3 * s**2 + 5 * s - 4]]
+            ),
+            Matrix([[0, 0, 0], [0, 0, 0]]),
+            Matrix([[0, 0], [0, 0], [0, 0]]),
+            Matrix([[6, 6, 10], [1, -4, 7], [-1, -1, 8]]),
+            Matrix([[-1, 4, 10], [5, -5, 2], [-4, 1, 5]]),
+            [sqrt(3), sqrt(7), 3],
+            [-sqrt(3), -3, -sqrt(11)],
+        )
+        cs.append(case)
+        case = (
+            Matrix([[-3, -1, -2], [1, -5, 3 * s + 4], [-5, 2, 5 - s]]),
+            Matrix([[0, 0, 0]]),
+            Matrix([[0], [0], [0]]),
+            Matrix([[5, -2, -5], [8, 0, -5], [3, -5, -2]]),
+            Matrix([[3, 1, -10], [-6, -4, 3], [-5, -9, -4]]),
+            [sqrt(3), sqrt(7), 3],
+            [-sqrt(5), -sqrt(7), -sqrt(11)],
+        )
+        cs.append(case)
         # highest degree wrt s not in highest coeff wrt sigma in orig G mat
         case = (
             Matrix([[-4, 2, 5], [-3, 4, 1], [5 * s + 3, -4, 1]]),
@@ -314,7 +411,7 @@ def test_reduce_matrix_shifts_3x3():
             Matrix([[1, 1, -6], [-1, -2, 1], [1, 4, -5]]),
             Matrix([[0, -7, 5], [4, -7, 7], [3, 7, -4]]),
             [sqrt(5), sqrt(7), sqrt(11)],
-            [-sqrt(11), -3, -sqrt(5)],
+            [-sqrt(5), -3, -sqrt(11)],
         )
         cs.append(case)
         case = (
@@ -324,14 +421,24 @@ def test_reduce_matrix_shifts_3x3():
             Matrix([[-1, 2, 2], [-2, 10, -10], [-8, 10, 1]]),
             Matrix([[6, 6, -5], [-9, 8, -10], [8, -4, -7]]),
             [sqrt(5), sqrt(7), sqrt(11)],
-            [-sqrt(11), -3, -sqrt(5)],
+            [-sqrt(5), -3, -sqrt(11)],
+        )
+        cs.append(case)
+        case = (
+            Matrix([[-4, -4, 4], [-5, 3, 5 * s - 2], [-3, 2, 2]]),
+            Matrix([[0, 0, 0]]),
+            Matrix([[0], [0], [0]]),
+            Matrix([[-1, -10, -8], [2, -6, 5], [1, -5, 7]]),
+            Matrix([[-7, 6, -5], [9, -5, 1], [1, 10, 9]]),
+            [sqrt(3), sqrt(7), 3],
+            [-sqrt(5), -sqrt(7), -sqrt(11)],
         )
         cs.append(case)
 
-    for k in range(10):
+    for k in range(3):
         cs.append(_generate_test_case(0, 3, 3))
-        # cs.append(_generate_test_case(1, 3, 3))
-        # cs.append(_generate_test_case(2, 3, 3))
+        cs.append(_generate_test_case(1, 3, 3))
+        cs.append(_generate_test_case(2, 3, 3))
         # cs.append(_generate_test_case(3, 3, 3))
         # cs.append(_generate_test_case(4, 3, 3))
         pass
