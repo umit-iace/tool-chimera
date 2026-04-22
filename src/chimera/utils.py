@@ -7,6 +7,7 @@ import numpy as np
 import sympy as sp
 from sympy.core.random import seed, shuffle
 from sympy.core.function import AppliedUndef
+from sympy.polys.fields import FracElement
 from sympy.utilities.iterables import ordered_partitions
 
 from .qpoly import QPoly
@@ -183,9 +184,9 @@ def get_term(
     """
 
     def _handle_qpoly(_qp: QPoly):
-        lc = _qp.LC()
+        lc = _qp.LC().as_expr()
         ld = _qp.degmax()
-        tc = _qp.TC()
+        tc = _qp.TC().as_expr()
         td = _qp.degmin()
         return (lc, ld), (tc, td)
 
@@ -213,12 +214,22 @@ def get_term(
 
         return (lc, ld), (tc, td)
 
+    def _handle_fracelement(_fe):
+        syms = _fe.field.symbols
+        if sym not in syms:
+            return (_fe.as_expr(), 0), (_fe.as_expr(), 0)
+        num = _fe.numer.as_expr()
+        den = _fe.denom.as_expr()
+        np, dp = [sp.Poly(expr, syms) for expr in (num, den)]
+        return _handle_rational(np, dp)
+
     def _handle_qpoly_coefficients(_p, sym):
         ld = sp.S.NegativeInfinity
         td = sp.S.Infinity
         lc = tc = 0
         for e, c in _p.as_dict().items():
-            (_lc, _ld), (_tc, _td) = get_term(c, sym)
+
+            (_lc, _ld), (_tc, _td) = _handle_fracelement(c)
 
             _lc *= _p.gen ** e
             if _ld == ld:
@@ -242,6 +253,10 @@ def get_term(
             return _handle_qpoly(e)
         else:
             return _handle_qpoly_coefficients(e, sym)
+
+    # maybe it is a FracElement?
+    if isinstance(e, FracElement):
+        raise NotImplementedError
 
     # maybe it is a polynomial expression?
     if e.is_Poly:
