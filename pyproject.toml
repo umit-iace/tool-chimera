@@ -36,7 +36,9 @@ module-name = "chimera"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-s -o log_cli=True"
+log_cli = true
+log_cli_level = "DEBUG"
+addopts = ["-s"]
 testpaths = [
     "tests",
 ]
