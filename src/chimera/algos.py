@@ -6,6 +6,7 @@ import logging
 from typing import Union, Tuple, Any
 
 import sympy as sp
+import numpy as np
 
 from .poly import echelon_form, column_reduced_form
 from .qpoly import QPoly
@@ -18,7 +19,7 @@ from .utils import (
     factor_diag_post,
 )
 
-__all__ = ["qpld", "make_entire", "qplde", "eliminate_delays", "reduce_matrix_shifts"]
+__all__ = ["qplde", "make_entire", "qpld_single", "qplde_single", "eliminate_delays", "reduce_matrix_shifts"]
 
 logger = logging.getLogger(__name__)
 
@@ -361,11 +362,11 @@ def qplde(mat: sp.Matrix, row: int, c_gen: sp.Symbol) -> tuple[sp.Matrix, sp.Mat
         f"Degrees of divisors: {[(q.degmin().evalf(), q.degmax().evalf()) for q in y]}"
     )
 
-    q = sp.Matrix([QPoly(0, _x.gen) for _x in x])
-    r = x.copy()
+    q = np.array([[QPoly(0, _x.gen)] for _x in x])
+    r = np.array(x.tolist())
     while True:
         logger.debug(
-            f"Degrees of remainder: {[(q.degmin().evalf(), q.degmax().evalf()) for q in r]}"
+            f"Degrees of remainder: {[(q.degmin().evalf(), q.degmax().evalf()) for q in r[:, 0]]}"
         )
 
         # check column compatibilities
@@ -374,7 +375,7 @@ def qplde(mat: sp.Matrix, row: int, c_gen: sp.Symbol) -> tuple[sp.Matrix, sp.Mat
         for _y in y:
             dmax = []
             dmin = []
-            for _r in r:
+            for _r in r[:,0]:
                 max_c = sp.assumptions.ask(_r.degmax() > _y.degmax())
                 dmax.append(max_c)
                 min_c = sp.assumptions.ask(_r.degmin() < _y.degmin())
@@ -393,32 +394,35 @@ def qplde(mat: sp.Matrix, row: int, c_gen: sp.Symbol) -> tuple[sp.Matrix, sp.Mat
         cl = []
         rl = []
         for i in range(row):
-            cl.append([mat[j, i].as_expr() for j in range(row)])
+            cl.append([mat[j, i] for j in range(row)])
             if compat_max[i]:
                 al.append(
                     [mat[j, i].LM().as_expr() for j in range(row) if compat_max[j]]
                 )
-                bl.append(r[i].LM().as_expr())
+                bl.append(r[i,0].LM().as_expr())
             elif compat_min[i]:
                 al.append(
                     [mat[j, i].TM().as_expr() for j in range(row) if compat_min[j]]
                 )
-                bl.append(r[i].TM().as_expr())
+                bl.append(r[i,0].TM().as_expr())
             else:
                 continue
             rl.append([1 if i == j else 0 for j in range(row)])
         a_mat = sp.Matrix(al)
         b_vec = sp.Matrix(bl)
-        c_mat = sp.Matrix(cl)
         rej_mat = sp.Matrix(rl).T
+        c_mat = np.array(cl)
 
         if rej_mat.shape == (0, 0):
+            logger.debug("Remainder small enough")
             # no further reduction necessary
             break
 
         q_r = rej_mat @ a_mat.inv() @ b_vec
-        q_e = q_r.applyfunc(lambda x: make_entire(QPoly(x, mat[0, 0].gen), c_gen)[0])
-        q_k = q_e.applyfunc(lambda x: x.as_expr())
+        q_r = q_r.applyfunc(lambda x: QPoly(x, mat[0, 0].gen))
+        q_e = q_r.applyfunc(lambda x: make_entire(x, c_gen)[0])
+        # work around domain matrix mayhem
+        q_k = np.array(q_e.tolist())
         r = r - c_mat @ q_k
         q = q + q_k
 
@@ -430,7 +434,7 @@ def make_entire(
     rat_sym: sp.Symbol,
     gen_expr: sp.Expr = None,
     verbose: bool = False,
-) -> QPoly:
+) -> Tuple[QPoly, sp.Expr]:
     """
     Convert a generalised polynomial in *sig_gen* with rational coefficients
     in *sym* into a version without singularities
@@ -461,15 +465,14 @@ def make_entire(
     num, den = expr.as_numer_denom()
 
     # factorise the denominator, extract leading coefficient for normalisation
-    p_den = sp.Poly(den, rat_sym)
+    p_den = sp.Poly(den.as_expr(), rat_sym)
     lc = p_den.LC()
     rts = sp.roots(p_den, rat_sym)
 
     # start without denominator and iteratively add zeroes
-    eq = QPoly(num / lc, gen_expr)
+    eq = QPoly(num / lc, *expr.gens)
     for r, m in rts.items():
-        if verbose:
-            print(f"Lifting root at {rat_sym}={r} with multiplicity {m}")
+        logger.debug(f"Lifting root at {rat_sym}={r} with multiplicity {m}")
 
         # compute derivatives
         eq_k_ds = [eq.as_expr()]
@@ -569,8 +572,8 @@ def qpld_single(
 
 
 def get_column_reduction_transform(mat, col, p_gen, q_gen=None):
-    l_mat = sp.Matrix.eye(mat.shape[0])
     if col is not None:
+        l_mat = sp.Matrix.eye(mat.shape[0])
         # reduce single column
         y = QPoly(mat[col, col], q_gen)
         for i in range(col + 1, mat.shape[0]):
@@ -578,12 +581,16 @@ def get_column_reduction_transform(mat, col, p_gen, q_gen=None):
             qe, re = qplde_single(x, y, p_gen)
             l_mat[i, col] = -qe.as_expr()
     else:
+        l_mat = np.eye(mat.shape[0], dtype=QPoly)
         # reduce multiple columns at once
-        mq = mat.applyfunc(lambda x: QPoly(x, q_gen))
+        if not isinstance(mat[0,0], QPoly):
+            mq = mat.applyfunc(lambda x: QPoly(x, q_gen))
+        else:
+            mq = mat.copy()
         for i in range(1, mat.shape[0]):
             qe, _ = qplde(mq, i, p_gen)
-            l_mat[i, :i] = [[-_qe.as_expr() for _qe in qe]]
-    return l_mat
+            l_mat[i, :i] = -qe.T
+        return l_mat
 
 
 def reduce_matrix_shifts(
@@ -591,13 +598,12 @@ def reduce_matrix_shifts(
 ) -> Tuple[sp.Matrix, sp.Matrix]:
     check_canonical_form(mat, p_gen, q_gen)
 
-    row_degs = sorted(set(get_row_degrees(mat, q_gen)))
-    diffs = [row_degs[i + 1] - row_degs[i] for i in range(len(row_degs) - 1)]
-    it_cnt = sp.ceiling((max(row_degs) - min(row_degs)) / min(diffs))
-
-    red_mat = mat.copy()
-    l_mat = sp.Matrix.eye(mat.shape[0])
     if 0:
+        red_mat = mat.copy()
+        l_mat = sp.Matrix.eye(mat.shape[0])
+        row_degs = sorted(set(get_row_degrees(mat, q_gen)))
+        diffs = [row_degs[i + 1] - row_degs[i] for i in range(len(row_degs) - 1)]
+        it_cnt = sp.ceiling((max(row_degs) - min(row_degs)) / min(diffs))
         for i in range(it_cnt):
             print(f"Iteration {i}:")
             if len(row_degs) == mat.shape[0]:
@@ -615,8 +621,18 @@ def reduce_matrix_shifts(
             row_degs = sorted(set(get_row_degrees(red_mat, q_gen)))
             sp.pprint(red_mat.applyfunc(lambda x: QPoly(x, q_gen).degree().evalf()))
     else:
-        l_mat = get_column_reduction_transform(red_mat, None, p_gen, q_gen)
+        # make sure we work with qpolys
+        if not isinstance(mat[0,0], QPoly):
+            mq = mat.applyfunc(lambda x: QPoly(x, q_gen))
+        l_mat = get_column_reduction_transform(mq, None, p_gen, q_gen)
+
+        # convert to numpy array to circumvent domain matrix problems
+        red_mat = np.array(mq.tolist())
         red_mat = l_mat @ red_mat
+
+        # convert back to sympy matrices
+        red_mat = sp.Matrix(red_mat.tolist())
+        l_mat = sp.Matrix(l_mat.tolist())
 
     return red_mat, l_mat
 
@@ -671,9 +687,8 @@ def move_col_degrees_on_diagonal(
     """
     (qlc, qld), (qtc, qtd) = get_matrix_terms(mat, q_gen)
     qt_row_degs = [min(qtd[r, :]) for r in range(mat.shape[0])]
-    rel_qt_row_degs = [
-        qt_row_degs[i + 1] - qt_row_degs[i] for i in range(len(qt_row_degs) - 1)
-    ]
+    # ql_row_degs = [max(qld[r, :]) for r in range(mat.shape[0])]
+
     # make sure that we work with homogenised delays
     assert all([lrd == qt_row_degs[0] for lrd in qt_row_degs])
 
@@ -688,11 +703,9 @@ def move_col_degrees_on_diagonal(
             # element must have col degree
             if pld[r, c] != p_col_degs[c]:
                 continue
-            if r < pld.rows - 1:
-                # element must have compatible relative row degree
-                delta_d = abs(qtd[r, c] - qtd[r + 1, c])
-                if delta_d != rel_qt_row_degs[r]:
-                    continue
+            # element must leading row delayd degree
+            if r < pld.rows - 1 and qtd[r,c] != qt_row_degs[r]:
+                continue
             r_compat[c].add(r)
     if any([not s for s in r_compat]):
         raise ValueError(

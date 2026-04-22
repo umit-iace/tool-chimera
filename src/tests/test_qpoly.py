@@ -11,6 +11,16 @@ a, b = sp.symbols("a b")
 param_values = {a: sp.sqrt(2), b: sp.pi}
 
 
+def case_0():
+    # positive integer exponents
+    f = sp.Integer(0)
+    g = sp.Integer(666)
+    print("Case 0:")
+    print(f"f: {f}")
+    print(f"g: {g}")
+    return f, g
+
+
 def case_1():
     # positive integer exponents
     f = sigma**3 + 5 + sigma**2 * 10
@@ -78,8 +88,17 @@ def case_6():
     return f, g
 
 
+def test_new():
+    for c in [case_0, case_1, case_2, case_3, case_4, case_5]:
+        for expr in c():
+            q = QPoly(expr, sigma)
+            err = expr - q.as_expr()
+            err = err.simplify()
+            assert err == 0
+
+
 def test_dict_from_expr():
-    for c in [case_1, case_2, case_3, case_4, case_5]:
+    for c in [case_0, case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
         for expr in f, g:
             s_dict = QPoly.dict_from_expr(expr, sigma)
@@ -95,7 +114,7 @@ def test_add():
     f = QPoly(0, sigma)
     assert f + 1 == 1
 
-    for c in [case_1, case_2, case_3, case_4, case_5]:
+    for c in [case_0, case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
         fg = QPoly(f, sigma)
         gg = QPoly(g, sigma)
@@ -105,7 +124,7 @@ def test_add():
 
 
 def test_sub():
-    for c in [case_1, case_2, case_3, case_4, case_5]:
+    for c in [case_0, case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
         fg = QPoly(f, sigma)
         gg = QPoly(g, sigma)
@@ -115,7 +134,7 @@ def test_sub():
 
 
 def test_mul():
-    for c in [case_1, case_2, case_3, case_4, case_5]:
+    for c in [case_0, case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
         fg = QPoly(f, sigma)
         gg = QPoly(g, sigma)
@@ -125,7 +144,7 @@ def test_mul():
 
 
 def test_div():
-    for c in [case_1, case_2, case_3, case_4, case_5, case_6]:
+    for c in [case_0, case_1, case_2, case_3, case_4, case_5, case_6]:
         f, g = c()
         fg = QPoly(f, sigma)
         gg = QPoly(g, sigma)
@@ -135,10 +154,10 @@ def test_div():
 
 
 def test_as_numer_denom():
-    for c in [case_1, case_2, case_3, case_4, case_5, case_6]:
+    for c in [case_0, case_1, case_2, case_3, case_4, case_5, case_6]:
         for expr in c():
             xp = QPoly(expr, sigma)
             num, den = xp.as_numer_denom()
             print(f"Numerator: {num}, Denominator: {den}")
-            err = num.as_expr() / den - expr
+            err = num.as_expr() / den.as_expr() - expr
             assert err.simplify() == 0

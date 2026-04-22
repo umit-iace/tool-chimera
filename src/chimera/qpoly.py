@@ -1,12 +1,13 @@
 from collections import defaultdict
 from functools import reduce
-from typing import Union
+from typing import Union, Any
 
 import sympy as sp
-from sympy.core.exprtools import decompose_power_rat
 from sympy.core.numbers import S
+from sympy.polys.fields import FracElement
 
 __all__ = ["QPoly"]
+
 
 
 class QPoly(sp.Basic):
@@ -49,7 +50,25 @@ class QPoly(sp.Basic):
 
     @classmethod
     def from_dict(cls, exp_coeff_map: dict, *gens: sp.Symbol):
-        red_map = {deg: cff for deg, cff in exp_coeff_map.items() if not cff.equals(0)}
+        free_syms = []
+        for c in exp_coeff_map.values():
+            if isinstance(c, FracElement):
+                free_syms.append(c.as_expr().free_symbols)
+            else:
+                free_syms.append(c.free_symbols)
+        if free_syms:
+            c_gens = set.union(*free_syms)
+        else:
+            c_gens = []
+        cff_dom = cls._get_coeff_domain(*c_gens)
+        red_map = {}
+        for exp, cff in exp_coeff_map.items():
+            if not isinstance(cff, FracElement):
+                cff = cff_dom.from_sympy(cff)
+            if cff == cff_dom.zero:
+                continue
+            red_map[exp] = cff
+        gens = (gens[0], *c_gens)
         return cls.new(red_map, *gens)
 
     @classmethod
@@ -100,10 +119,10 @@ class QPoly(sp.Basic):
         return f.mul(g ** (-1))
 
     def __str__(self):
-        return str(f"QPoly({self.exponents()}, {self.gen})")
+        return str(f"QPoly({self.exponents()}, gens={self.gens})")
 
     def __repr__(self):
-        return str(f"QPoly({self.exponents()}, {self.gen})")
+        return str(f"QPoly({self.exponents()}, gens={self.gens})")
 
     def add_ground(f, g):
         if g == S.Zero:
@@ -132,15 +151,25 @@ class QPoly(sp.Basic):
         # join coefficients
         fd = f.as_dict()
         gd = g.as_dict()
-        rd = {exp: sp.ratsimp(fd[exp] + gd[exp]) for exp in common_exps}
+        rd = {}
+        for exp in common_exps:
+            fc = fd[exp]
+            gc = gd[exp]
+            try:
+                rc = fc + gc
+            except TypeError:
+                # help sympys domain system
+                fn, gn = f._unify_coeffs(fc, gc)
+                rc = fn + gn
+            rd[exp] = rc
         rd.update({exp: fd[exp] for exp in f_only_exps})
         rd.update({exp: gd[exp] for exp in g_only_exps})
 
-        return QPoly.from_dict(rd, f.gen)
+        return QPoly.from_dict(rd, *f.gens)
 
     def neg(f):
         rd = {exp: -cff for exp, cff in f.as_dict().items()}
-        return QPoly.from_dict(rd, f.gen)
+        return QPoly.from_dict(rd, *f.gens)
 
     def sub(f, g):
         return f.add(-g)
@@ -150,8 +179,8 @@ class QPoly(sp.Basic):
         rd = {}
         for exp, cff in f.as_dict().items():
             rd[exp] = cff * g
-
-        return QPoly.from_dict(rd, f.gen)
+        gens = f.gens + tuple(g.free_symbols)
+        return QPoly.from_dict(rd, *gens)
 
     def mul(f, g):
         g = sp.sympify(g)
@@ -160,25 +189,36 @@ class QPoly(sp.Basic):
         if not isinstance(g, QPoly):
             if f.gen not in g.as_expr().free_symbols:
                 return f.mul_ground(g)
-            g = QPoly(g, f.gen)
+            g = QPoly(g, *f.gens)
 
         r_dict = {}
         for fd, fc in f.as_dict().items():
             for gd, gc in g.as_dict().items():
                 rd = fd + gd
-                rc = fc * gc
+                try:
+                    rc = fc * gc
+                except TypeError:
+                    # help sympys domain system
+                    fn, gn = f._unify_coeffs(fc, gc)
+                    rc = fn * gn
                 if rd in r_dict:
-                    r_dict[rd] = sp.ratsimp(r_dict[rd] + rc)
+                    r_dict[rd] = r_dict[rd] + rc
                 else:
                     r_dict[rd] = rc
-        return QPoly.from_dict(r_dict, f.gen)
+        return QPoly.from_dict(r_dict, *f.gens)
+
+    def _unify_coeffs(self, fc, gc) -> tuple[Any, Any]:
+        new_dom = fc.field.to_domain().unify(gc.field.to_domain())
+        fn = new_dom.convert_from(fc, fc.field.to_domain())
+        gn = new_dom.convert_from(gc, gc.field.to_domain())
+        return fn, gn
 
     def div_ground(f, g):
         g = sp.sympify(g)
         rd = {}
         for exp, cff in f.as_dict().items():
             rd[exp] = cff / g
-        return QPoly.from_dict(rd, f.gen)
+        return QPoly.from_dict(rd, *f.gens)
 
     def div(f, g):
         g = sp.sympify(g)
@@ -196,25 +236,30 @@ class QPoly(sp.Basic):
     def _eval_is_polynomial(self, gens):
         return False
 
-    def as_coeff_Mul(self, *deps, **kwargs):
-        return self.as_expr().as_coeff_Mul(*deps, **kwargs)
+    @staticmethod
+    def _get_coeff_domain(*c_gens):
+        return sp.EX.frac_field(*c_gens)
 
-    def as_coeff_Add(self, *deps, **kwargs):
-        return self.as_expr().as_coeff_Add(*deps, **kwargs)
+    # def as_coeff_Mul(self, *deps, **kwargs):
+    #     return self.as_expr().as_coeff_Mul(*deps, **kwargs)
+
+    # def as_coeff_Add(self, *deps, **kwargs):
+    #     return self.as_expr().as_coeff_Add(*deps, **kwargs)
 
     def as_numer_denom(self):
         """
         Return GenPoly with coefficient numerators as well as their common denominator
         """
-        c_denoms = [c.as_numer_denom()[1] for c in self.coefficients()]
-        denom = sp.lcm(c_denoms)
-
-        nd = {exp: sp.cancel(cff * denom) for exp, cff in self.as_dict().items()}
-        numer = QPoly.from_dict(nd, self.gen)
+        c_denoms = [c.numer for c in self.coefficients()]
+        if not c_denoms:
+            return sp.Integer(0), sp.Integer(1)
+        denom = reduce(c_denoms[0].ring.domain.lcm, c_denoms)
+        nd = {exp: cff * denom for exp, cff in self.as_dict().items()}
+        numer = QPoly.from_dict(nd, *self.gens)
         return numer, denom
 
-    def as_base_exp(self):
-        return self.as_expr().as_base_exp()
+    # def as_base_exp(self):
+    #     return self.as_expr().as_base_exp()
 
     @staticmethod
     def dict_to_expr(exp_coeff_map: dict, gen: sp.Symbol) -> sp.Expr:
@@ -223,7 +268,7 @@ class QPoly(sp.Basic):
         """
         expr = S.Zero
         for k, v in exp_coeff_map.items():
-            expr += v * gen**k
+            expr += v.as_expr() * gen**k
         return expr
 
     @staticmethod
@@ -245,26 +290,27 @@ class QPoly(sp.Basic):
         work with rational powers of generators in an expression and thus
         create powers and coefficients of a generalized polynomial.
         """
-        assert len(gens) == 1
-        gen = gens[0]
+        q_gen = gens[0]
+
         if expr.is_Poly:
-            if expr.gen == gen:
+            if expr.gen == q_gen:
                 return expr.as_dict()
             else:
                 expr = expr.as_expr()
         else:
             expr = sp.sympify(expr)
+
         w = sp.Wild("w")
-        if not isinstance(gen, sp.Symbol):
+        if not isinstance(q_gen, sp.Symbol):
             # fix issues with compound generators
-            if isinstance(gen, sp.exp):
-                r = gen.func(gen.exp * w)
-                gen = sp.Dummy(positive=True)
-                expr = expr.replace(r, gen**w)
+            if isinstance(q_gen, sp.exp):
+                r = q_gen.func(q_gen.exp * w)
+                q_gen = sp.Dummy(positive=True)
+                expr = expr.replace(r, q_gen**w)
             else:
                 print("Warning compound generators may cause problems")
 
-        e_c_map = exponent_coeff_dict(expr, gen)
+        e_c_map = exponent_coeff_dict(expr, q_gen)
         return e_c_map
 
     def as_expr(self) -> sp.Expr:
@@ -317,11 +363,11 @@ class QPoly(sp.Basic):
 
     def LM(self, s_dict: dict = None):
         """Return the leading monom"""
-        return QPoly.from_list([(self.degmax(), self.rep[self.degmax()])], self.gen)
+        return QPoly.from_list([(self.degmax(), self.rep[self.degmax()])], *self.gens)
 
     def TM(self, s_dict: dict = None):
         """Return the trailing monom"""
-        return QPoly.from_list([(self.degmin(), self.rep[self.degmin()])], self.gen)
+        return QPoly.from_list([(self.degmin(), self.rep[self.degmin()])], *self.gens)
 
     def LC(self, s_dict: dict = None) -> sp.Expr:
         """Return the Leading coefficient"""
