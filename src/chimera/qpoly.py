@@ -49,7 +49,7 @@ class QPoly(sp.Basic):
 
     @classmethod
     def from_dict(cls, exp_coeff_map: dict, *gens: sp.Symbol):
-        red_map = {deg: cff for deg, cff in exp_coeff_map.items() if cff != 0}
+        red_map = {deg: cff for deg, cff in exp_coeff_map.items() if not cff.equals(0)}
         return cls.new(red_map, *gens)
 
     @classmethod
@@ -132,7 +132,7 @@ class QPoly(sp.Basic):
         # join coefficients
         fd = f.as_dict()
         gd = g.as_dict()
-        rd = {exp: (fd[exp] + gd[exp]).expand().cancel() for exp in common_exps}
+        rd = {exp: sp.ratsimp(fd[exp] + gd[exp]) for exp in common_exps}
         rd.update({exp: fd[exp] for exp in f_only_exps})
         rd.update({exp: gd[exp] for exp in g_only_exps})
 
@@ -168,7 +168,7 @@ class QPoly(sp.Basic):
                 rd = fd + gd
                 rc = fc * gc
                 if rd in r_dict:
-                    r_dict[rd] = (r_dict[rd] + rc).expand().cancel()
+                    r_dict[rd] = sp.ratsimp(r_dict[rd] + rc)
                 else:
                     r_dict[rd] = rc
         return QPoly.from_dict(r_dict, f.gen)
@@ -462,9 +462,9 @@ def exponent_coeff_dict(expr, gen, *, strict=True, expand=True):
         out[exp] += coeff
 
     # Prune zeros and simplify coefficients
-    out = {e: sp.simplify(c) for e, c in out.items() if not c.equals(0)}
+    out = {e: sp.ratsimp(c) for e, c in out.items()}
 
     if strict:
         return out
     else:
-        return out, sp.simplify(other)
+        return out, other
