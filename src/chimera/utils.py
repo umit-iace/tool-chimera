@@ -1,6 +1,7 @@
 """
 Utility functions
 """
+
 import random as rd
 
 import numpy as np
@@ -8,9 +9,11 @@ import sympy as sp
 from sympy.core.random import seed, shuffle
 from sympy.core.function import AppliedUndef
 from sympy.polys.fields import FracElement
+from sympy.polys.matrices import DomainMatrix
+from sympy.polys.rings import PolyElement
 from sympy.utilities.iterables import ordered_partitions
 
-from .qpoly import QPoly
+from .qpoly import QPoly, QuasiPolynomialElement
 
 __all__ = [
     "check_singularities",
@@ -110,17 +113,40 @@ def get_trailing_term_matrix(mat, sym, subs=None):
 def get_matrix_terms(mat, sym, subs: dict = None):
     if subs is not None:
         mat = mat.subs(subs).expand()
-    l_degs = sp.MutableDenseMatrix.zeros(*mat.shape)
-    l_cffs = sp.MutableDenseMatrix.zeros(*mat.shape)
-    t_degs = sp.MutableDenseMatrix.zeros(*mat.shape)
-    t_cffs = sp.MutableDenseMatrix.zeros(*mat.shape)
-    for idx, e in mat.iter_items():
+
+    # l_degs = sp.MutableDenseMatrix.zeros(*mat.shape)
+    # l_cffs = sp.MutableDenseMatrix.zeros(*mat.shape)
+    # t_degs = sp.MutableDenseMatrix.zeros(*mat.shape)
+    # t_cffs = sp.MutableDenseMatrix.zeros(*mat.shape)
+
+    l_degs = []
+    l_cffs = []
+    t_degs = []
+    t_cffs = []
+    for e in mat.flat():
         (lc, ld), (tc, td) = get_term(e, sym)
-        l_cffs[idx] = lc
-        l_degs[idx] = ld
-        t_cffs[idx] = tc
-        t_degs[idx] = td
+        l_cffs.append(lc)
+        l_degs.append(ld)
+        t_cffs.append(tc)
+        t_degs.append(td)
+
+    l_degs = domain_matrix_from_flat_list(l_degs, mat.shape)
+    l_cffs = domain_matrix_from_flat_list(l_cffs, mat.shape)
+    t_degs = domain_matrix_from_flat_list(t_degs, mat.shape)
+    t_cffs = domain_matrix_from_flat_list(t_cffs, mat.shape)
+
     return (l_cffs, l_degs), (t_cffs, t_degs)
+
+
+def domain_matrix_from_flat_list(elements, shape):
+    if hasattr(elements[0], "domain"):
+        domain = elements[0].domain
+    elif hasattr(elements[0], "field"):
+            domain = elements[0].field
+    else:
+        domain, elements = DomainMatrix.get_domain(elements)
+    dm = DomainMatrix.from_list_flat(elements, shape, domain)
+    return dm
 
 
 def get_leading_column_degrees(
@@ -130,7 +156,10 @@ def get_leading_column_degrees(
     Extract the highest degrees of each column
     """
     (coeffs, degs), _ = get_matrix_terms(mat, sym, subs)
-    col_degs = [max(degs[:, c]) for c in range(mat.shape[1])]
+    col_degs = [
+        max([degs[i, c].element for i in range(mat.shape[0])])
+        for c in range(mat.shape[1])
+    ]
     return col_degs
 
 
@@ -183,12 +212,16 @@ def get_term(
         Tuple of coefficient and exponent for the selected mode.
     """
 
-    def _handle_qpoly(_qp: QPoly):
-        lc = _qp.LC().as_expr()
+    def _handle_qpoly(_qp: QuasiPolynomialElement):
+        lc = _qp.LC()
         ld = _qp.degmax()
-        tc = _qp.TC().as_expr()
+        tc = _qp.TC()
         td = _qp.degmin()
         return (lc, ld), (tc, td)
+
+    def _handle_polylement(_pe):
+        p = sp.Poly.from_dict(_pe.as_expr_dict(), _pe.ring.symbols)
+        return _handle_poly(p)
 
     def _handle_poly(_p: sp.Poly):
         lc = _p.LC()
@@ -217,28 +250,26 @@ def get_term(
     def _handle_fracelement(_fe):
         syms = _fe.field.symbols
         if sym not in syms:
-            return (_fe.as_expr(), 0), (_fe.as_expr(), 0)
-        num = _fe.numer.as_expr()
-        den = _fe.denom.as_expr()
-        np, dp = [sp.Poly(expr, syms) for expr in (num, den)]
-        return _handle_rational(np, dp)
+            return (_fe, 0), (_fe, 0)
+        num = _fe.numer
+        den = _fe.denom
+        # np, dp = [sp.Poly(expr, syms) for expr in (num, den)]
+        return _handle_rational(num, den)
 
     def _handle_qpoly_coefficients(_p, sym):
         ld = sp.S.NegativeInfinity
         td = sp.S.Infinity
         lc = tc = 0
-        for e, c in _p.as_dict().items():
-
+        for e, c in _p.items():
             (_lc, _ld), (_tc, _td) = _handle_fracelement(c)
-
-            _lc *= _p.gen ** e
+            _lc *= _p.gen**e
             if _ld == ld:
                 lc += _lc
             elif _ld > ld:
                 ld = _ld
                 lc = _lc
 
-            _tc *= _p.gen ** e
+            _tc *= _p.gen**e
             if _td == td:
                 tc += _tc
             elif _td < td:
@@ -248,7 +279,7 @@ def get_term(
         return (lc, ld), (tc, td)
 
     # maybe it is a quasipolynomial?
-    if isinstance(e, QPoly):
+    if isinstance(e, QuasiPolynomialElement):
         if e.gen == sym:
             return _handle_qpoly(e)
         else:
@@ -256,7 +287,11 @@ def get_term(
 
     # maybe it is a FracElement?
     if isinstance(e, FracElement):
-        raise NotImplementedError
+        return _handle_fracelement(e)
+
+    # maybe it is a PolyElement?
+    if isinstance(e, PolyElement):
+        return _handle_polylement(e)
 
     # maybe it is a polynomial expression?
     if e.is_Poly:
@@ -274,8 +309,9 @@ def get_term(
         np, dp = [sp.Poly(expr, sym) for expr in (num, den)]
         return _handle_rational(np, dp)
 
+    raise ValueError
     # last resort, try to parse as quasipolynomial
-    p = QPoly(e, sym)
+    p = QuasiPolynomialElement.from_expr(e, sym)
     return _handle_qpoly(p)
 
 
@@ -293,13 +329,16 @@ def get_lccm(mat: sp.Matrix, sym: sp.Symbol, subs: dict = None) -> sp.Matrix:
 
     """
     (coeffs, degs), _ = get_matrix_terms(mat, sym, subs)
-    col_degs = [max(degs[:, c]) for c in range(mat.shape[1])]
+    col_degs = [
+        max([degs[i, c].element for i in range(mat.shape[0])])
+        for c in range(mat.shape[1])
+    ]
 
-    r = sp.Matrix.zeros(*mat.shape)
+    r = DomainMatrix.zeros(mat.shape, coeffs.domain)
     for c_idx in range(mat.shape[1]):
         for r_idx in range(mat.shape[0]):
-            if degs[r_idx, c_idx] == col_degs[c_idx]:
-                r[r_idx, c_idx] = coeffs[r_idx, c_idx]
+            if degs[r_idx, c_idx].element == col_degs[c_idx]:
+                r[r_idx, c_idx] = coeffs[r_idx, c_idx].element
     return r
 
 
@@ -875,6 +914,6 @@ def random_partition_m_parts(n, m):
     shuffle(part)
 
     # remove padding
-    part[:] = [p-1 for p in part]
+    part[:] = [p - 1 for p in part]
 
     return part

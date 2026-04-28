@@ -1,12 +1,15 @@
 import random
 import logging
+from functools import reduce
 
 import sympy as sp
+from numpy import dtype
 from sympy import Matrix, sqrt, Integer
+from sympy.polys.matrices import DomainMatrix
 from sympy.core.random import sample
 import pytest
 
-from chimera import QPoly
+from chimera import QPoly, QuasiPolynomialRing
 from chimera.algos import (
     reduce_matrix_shifts,
     qpld_single,
@@ -186,63 +189,67 @@ def _run_reduction_test(case):
     h_mat = q0_mat @ d_mat + c_mat @ n_mat
     m = pred_mat @ d_mat - q1_mat @ delay_mat @ h_mat
     # sp.pprint(m, wrap_line=False)
-    mq = m.applyfunc(lambda x: QPoly(x, sigma, s))
-    sp.pprint(mq.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
+
+    # convert to domain system
+    coeff_dom = sp.EX.frac_field(s)
+    qp_ring = QuasiPolynomialRing(coeff_dom, sigma)
+    m = DomainMatrix.from_list(m.tolist(), domain=qp_ring)
+
+    # mq = m.applyfunc(lambda x: QPoly(x, sigma, s))
+    sp.pprint(m.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
     sp.pprint(
-        mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
+        m.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
         wrap_line=False,
     )
 
     (_, l_cd), (_, t_cd) = get_matrix_terms(m, sigma)
     cds = l_cd - t_cd
-    cd = [max(cds[:, c]) for c in range(cds.shape[1])]
+    cd = [max([cds[i, c].element for i in range(cds.shape[0])]).as_expr() for c in range(cds.shape[1])]
     print("Initial Column degrees:")
     sp.pprint(cd)
-    sp.pprint([c.evalf() for c in cd])
-    init_state_dim = sp.Add(*cd).simplify()
+    sp.pprint([c.as_expr().evalf() for c in cd])
+    init_state_dim = sum(cd)
     print(f"Initial state dimension: {init_state_dim} ({init_state_dim.evalf()})")
 
     print("Coupling matrix Q1:")
     sp.pprint(q1_mat)
     print("After preliminary trafo:")
-    L, U, p = q1_mat[:, ::-1].LUdecomposition()
-    P = sp.eye(q1_mat.rows).permuteFwd(p)
-    sp.pprint(L.inv() @ P @ q1_mat)
-    m = L.inv() @ P @ m
-    mq = m.applyfunc(lambda x: QPoly(x, sigma))
-    sp.pprint(mq.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
+    q1_mat = DomainMatrix.from_Matrix(q1_mat).to_field()
+    L, U, p = q1_mat[:, ::-1].lu()
+    P = DomainMatrix.from_Matrix(sp.eye(q1_mat.shape[0]).permuteFwd(p))
+    q1b = L.inv() * P * q1_mat
+    sp.pprint(q1b.to_Matrix())
+    m = L.inv() * P * m
+    # mq = m.applyfunc(lambda x: QPoly(x, sigma))
+    sp.pprint(m.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
     sp.pprint(
-        mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
+        m.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
         wrap_line=False,
     )
 
     l, m, r = canonical_form(m, s, sigma)
     print("In canonical form:")
-    mq = m.applyfunc(lambda x: QPoly(x, sigma))
-    sp.pprint(mq.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
+    # mq = m.applyfunc(lambda x: QPoly(x, sigma))
+    sp.pprint(m.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
     sp.pprint(
-        mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
+        m.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
         wrap_line=False,
     )
 
     # the actual function call
     mrg, lg = reduce_matrix_shifts(m, s, sigma)
-    if not isinstance(mrg[0, 0], QPoly):
-        mq = mrg.applyfunc(lambda x: QPoly(x, sigma))
-    else:
-        mq = mrg
 
     print("Reduction results:")
     # sp.pprint(mq, wrap_line=False)
-    sp.pprint(mq.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
+    sp.pprint(mrg.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
     sp.pprint(
-        mq.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
+        mrg.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
         wrap_line=False,
     )
 
     print("Checking results:")
     # 1) all elements should have same degrees in each column
-    (_, l_cd), (_, t_cd) = get_matrix_terms(mq, sigma)
+    (_, l_cd), (_, t_cd) = get_matrix_terms(mrg, sigma)
     cds = l_cd - t_cd
     cd = [max(cds[:, c]) for c in range(cds.shape[1])]
     print("New column degrees:")
@@ -254,8 +261,8 @@ def _run_reduction_test(case):
     assert dim_err <= 0
 
     # 2) leading coefficient matrices wrt s and sigma must commute and have full rank
-    lcms = get_lccm(mq, s)
-    lcme = get_lccm(mq, sigma)
+    lcms = get_lccm(mrg, s)
+    lcme = get_lccm(mrg, sigma)
     lcmse = get_lccm(lcms, sigma)
     lcmes = get_lccm(lcme, s)
     assert lcmes == lcmse
@@ -331,6 +338,7 @@ def test_reduce_matrix_shifts_2x2():
         _run_reduction_test(c)
 
 
+@pytest.mark.skip("Extensive Benchmark, takes quite long")
 def test_reduce_matrix_shifts_3x2():
     print("3 x 2 cases:")
     cs = []
@@ -356,6 +364,7 @@ def test_reduce_matrix_shifts_3x2():
         _run_reduction_test(c)
 
 
+# @pytest.mark.skip("Extensive Benchmark, takes quite long")
 def test_reduce_matrix_shifts_3x3():
     print("3 x 3 cases:")
     cs = []

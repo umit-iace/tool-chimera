@@ -426,9 +426,9 @@ def column_reduced_form(
     """
     assert mat.rank() == min(*mat.shape)
     m = mat.copy()
-    u = sp.Matrix.eye(m.shape[1])
+    u = DomainMatrix.eye(m.shape[1], mat.domain)
     # u = m.eye(m.shape[1], m.domain)
-    if sym not in mat.free_symbols:
+    if sym not in mat.to_Matrix().free_symbols:
         return m, u
     while not is_col_reduced(m, sym):
         # sort into decreasing column degrees
@@ -438,8 +438,9 @@ def column_reduced_form(
             cds = np.array(cds)[s_idxs].tolist()
             perm = sp.combinatorics.Permutation(s_idxs)
             p = sp.PermutationMatrix(perm).as_explicit().T
-            m = m @ p
-            u = u @ p
+            p = DomainMatrix.from_list(p.tolist(), mat.domain)
+            m = m * p
+            u = u * p
 
         # select pivot column index k by checking if column mh[k]
         # can be expressed as linear combination of columns mh[k+1:]
@@ -448,13 +449,17 @@ def column_reduced_form(
             col = mh[:, k]
             sub = mh[:, k + 1 :]
             c_sym = sp.symbols(f"c_{k + 1}:{m.shape[1]}")
-            c_sol = sp.linsolve((sub, col), *c_sym)
-            if c_sol:
+            # c_sol = sp.linsolve((sub, col), *c_sym)
+            sol_num, sol_den = sub.solve_den(col)
+            if sol_num:
                 # success, extract the coefficients
                 triv_d = {c: 0 for c in c_sym}
                 c_dict = {idx: 0 for idx in range(m.shape[1])}
+                # c_dict |= {
+                    # k + 1 + idx: cs.subs(triv_d) for idx, cs in enumerate(c_sol.args[0])
+                # }
                 c_dict |= {
-                    k + 1 + idx: cs.subs(triv_d) for idx, cs in enumerate(c_sol.args[0])
+                    k + 1 + idx[0]: cs.to_field() / sol_den for idx, cs in enumerate(sol_num.iter_items())
                 }
                 break
         else:
@@ -474,13 +479,13 @@ def column_reduced_form(
                     rd[i, k] = poly
                 else:
                     rd[i, k] = -c_dict[i] * sym ** (cds[k] - cds[i])
-        r = sp.Matrix.from_dok(m.shape[1], m.shape[1], rd)
-        # r = DomainMatrix.from_dod(rd, (m.shape[1], m.shape[1]), m.domain)
+        # r = sp.Matrix.from_dok(m.shape[1], m.shape[1], rd)
+        r = DomainMatrix.from_dok(rd, (m.shape[1], m.shape[1]), m.domain)
 
         # apply the transform
-        m = m @ r
-        m.simplify()
-        u = u @ r
+        m = m * r
+        # m.simplify()
+        u = u * r
 
     return m, u
 
@@ -509,5 +514,6 @@ def random_col_reduced_mat(m, n, coldeg_sum, c_min, c_max, p_gen):
     mat = sp.Matrix.zeros(m, n)
     while mat.rank() < min(m, n):
         mat = random_poly_mat(m, n, cds, c_min, c_max, p_gen)
+    mat = DomainMatrix.from_Matrix(mat)
     mat, _ = column_reduced_form(mat, p_gen)
     return mat
