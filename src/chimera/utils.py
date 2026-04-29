@@ -9,10 +9,13 @@ import sympy as sp
 from sympy.core.random import seed, shuffle
 from sympy.core.function import AppliedUndef
 from sympy.polys.domains.domainelement import DomainElement
+from sympy.polys.domains.expressiondomain import EX
 from sympy.polys.fields import FracElement
 from sympy.polys.matrices import DomainMatrix
+from sympy.polys.matrices.domainscalar import DomainScalar
 from sympy.polys.rings import PolyElement
 from sympy.utilities.iterables import ordered_partitions
+from sympy.matrices import Matrix
 
 from .qpoly import QPoly, QuasiPolynomialElement
 
@@ -142,20 +145,27 @@ def get_matrix_terms(mat, sym, subs: dict = None):
 def domain_matrix_from_flat_list(elements, shape):
     e = elements[0]
     if isinstance(e, DomainElement):
-        if isinstance(e, PolyElement):
+        if isinstance(e, (PolyElement, QuasiPolynomialElement)):
             domain = e.ring
         elif isinstance(e, FracElement):
             base_dom = e.field.domain
             syms = e.field.symbols
             domain = base_dom.frac_field(*syms)
+        elif EX.of_type(e):
+            domain = EX
         else:
             domain = e.domain
         dm = DomainMatrix.from_list_flat(elements, shape, domain)
     else:
         # construct nested list
         rows, cols = shape
-        elems_nested = [elements[i * cols:(i + 1) * cols] for i in range(rows)]
-        dm = DomainMatrix.from_list_sympy(rows, cols, elems_nested)
+        elems_nested = [elements[i * cols : (i + 1) * cols] for i in range(rows)]
+        dm = DomainMatrix.from_list_sympy(rows, cols, elems_nested, extension=True)
+
+    m = dm.to_Matrix()
+    if not m.free_symbols:
+        return m
+
     return dm
 
 
@@ -221,6 +231,7 @@ def get_term(
     Returns:
         Tuple of coefficient and exponent for the selected mode.
     """
+
     def _handle_qpoly(_qp: QuasiPolynomialElement):
         lc = _qp.LC()
         ld = _qp.degmax()
@@ -232,15 +243,15 @@ def get_term(
         syms = _fe.field.symbols
         if sym not in syms:
             return (_fe, 0), (_fe, 0)
-        num_pe = _fe.numer
-        num_p = sp.Poly(num_pe, *num_pe.ring.symbols, domain=num_pe.ring.domain)
-        den_pe = _fe.denom
-        den_p = sp.Poly(den_pe, *den_pe.ring.symbols, domain=den_pe.ring.domain)
-        return _handle_rational(num_p, den_p)
+        return _handle_rational(_fe.numer, _fe.denom)
 
     def _handle_rational(_np, _dp):
-        (lcn, ldn), (tcn, tdn) = _handle_poly(_np)
-        (lcd, ldd), (tcd, tdd) = _handle_poly(_dp)
+        if isinstance(_np, PolyElement):
+            (lcn, ldn), (tcn, tdn) = _handle_polyelement(_np)
+            (lcd, ldd), (tcd, tdd) = _handle_polyelement(_dp)
+        else:
+            (lcn, ldn), (tcn, tdn) = _handle_poly(_np)
+            (lcd, ldd), (tcd, tdd) = _handle_poly(_dp)
 
         lc = lcn / lcd
         ld = ldn - ldd
@@ -248,14 +259,22 @@ def get_term(
             tdn = 0
         if tdd == sp.S.NegativeInfinity:
             tdd = 0
-        tc = (tcn / tcd).cancel()
+        tc = tcn / tcd
+        if hasattr(tc, "cancel"):
+            tc = tc.cancel()
         td = tdn - tdd
 
         return (lc, ld), (tc, td)
 
     def _handle_polyelement(_pe):
-        p = sp.Poly(_pe, *_pe.ring.symbols, domain=_pe.domain)
-        return _handle_poly(p)
+        lc = _pe.LC
+        ld = _pe.LM[0]
+        td = _pe.tail_degree()
+        if td == sp.S.NegativeInfinity:
+            tc = 0
+        else:
+            tc = _pe.coeff(_pe.ring(_pe.ring.gens[0] ** td))
+        return (lc, ld), (tc, td)
 
     def _handle_poly(_p: sp.Poly):
         lc = _p.LC()
@@ -267,17 +286,17 @@ def get_term(
     def _handle_qpoly_coefficients(_p, sym):
         ld = sp.S.NegativeInfinity
         td = sp.S.Infinity
-        lc = tc = 0
+        lc = tc = _p.ring.zero
         for e, c in _p.items():
             (_lc, _ld), (_tc, _td) = _handle_fracelement(c)
-            _lc *= _p.gen**e
+            _lc = QuasiPolynomialElement.from_dict({e: _lc}, _p.ring)
             if _ld == ld:
                 lc += _lc
             elif _ld > ld:
                 ld = _ld
                 lc = _lc
 
-            _tc *= _p.gen**e
+            _tc = QuasiPolynomialElement.from_dict({e: _tc}, _p.ring)
             if _td == td:
                 tc += _tc
             elif _td < td:
@@ -300,6 +319,10 @@ def get_term(
     # maybe it is a PolyElement?
     if isinstance(e, PolyElement):
         return _handle_polyelement(e)
+
+    # maybe it is an Expression?
+    if EX.of_type(e):
+        raise NotImplementedError
 
     # maybe it is a polynomial expression?
     if e.is_Poly:
@@ -338,15 +361,20 @@ def get_lccm(mat: sp.Matrix, sym: sp.Symbol, subs: dict = None) -> sp.Matrix:
     """
     (coeffs, degs), _ = get_matrix_terms(mat, sym, subs)
     col_degs = [
-        max([degs[i, c].element for i in range(mat.shape[0])])
-        for c in range(mat.shape[1])
+        max([degs[i, c] for i in range(mat.shape[0])]) for c in range(mat.shape[1])
     ]
 
-    r = DomainMatrix.zeros(mat.shape, coeffs.domain)
+    if isinstance(coeffs, DomainMatrix):
+        r = DomainMatrix.zeros(mat.shape, coeffs.domain)
+    else:
+        r = Matrix.zeros(*mat.shape)
     for c_idx in range(mat.shape[1]):
         for r_idx in range(mat.shape[0]):
-            if degs[r_idx, c_idx].element == col_degs[c_idx]:
-                r[r_idx, c_idx] = coeffs[r_idx, c_idx].element
+            if degs[r_idx, c_idx] == col_degs[c_idx]:
+                c = coeffs[r_idx, c_idx]
+                if isinstance(c, DomainScalar):
+                    c = c.element
+                r[r_idx, c_idx] = c
     return r
 
 

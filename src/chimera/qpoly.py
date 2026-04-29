@@ -158,26 +158,16 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
 
     @classmethod
     def from_dict(cls, exp_coeff_map: dict, ring: Ring):
-        # free_syms = []
-        # for c in exp_coeff_map.values():
-        #     if isinstance(c, FracElement):
-        #         free_syms.append(c.as_expr().free_symbols)
-        #     else:
-        #         free_syms.append(c.free_symbols)
-        # if free_syms:
-        #     c_gens = set.union(*free_syms)
-        # else:
-        #     c_gens = []
-        # cff_dom = cls._get_coeff_domain(*c_gens)
         cff_dom = ring.domain
         red_map = {}
         for exp, cff in exp_coeff_map.items():
-            if not isinstance(cff, FracElement):
+            if not isinstance(cff, DomainElement):
                 cff = cff_dom.from_sympy(cff)
+            else:
+                cff = cff_dom.convert(cff)
             if cff == cff_dom.zero:
                 continue
             red_map[exp] = cff
-        # gens = (ring.symbols[0], *c_gens)
         return cls(ring, red_map)
 
     def __pos__(self):
@@ -420,7 +410,13 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
         r_dict = {}
         for fd, fc in f.items():
             for gd, gc in g.items():
+                if isinstance(fd, DomainElement):
+                    gd = fd.dom.convert(gd)
+                # except TypeError:
+                #     # help sympys domain system
+                #     fn, gn = f._unify_exponents(fd, gd)
                 rd = fd + gd
+
                 try:
                     rc = fc * gc
                 except TypeError:
@@ -504,6 +500,12 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
             return q
         else:
             raise ExactQuotientFailed(f, G)
+
+    def _unify_exponents(self, fd, gd) -> tuple[Any, Any]:
+        new_dom = fd.domain.unify(gd.domain)
+        fn = new_dom.convert_from(fd, fd.domain)
+        gn = new_dom.convert_from(gd, gd.domain)
+        return fn, gn
 
     def _unify_coeffs(self, fc, gc) -> tuple[Any, Any]:
         new_dom = fc.field.to_domain().unify(gc.field.to_domain())
@@ -690,7 +692,6 @@ class QuasiPolynomialRing(Ring):
             symbols = (symbols, )
         self.symbols = symbols
         self.order = sp.polys.orderings.monomial_key(order)
-        self.dtype = QuasiPolynomialElement
 
         self.zero_monom = 0
 
@@ -750,7 +751,7 @@ class QuasiPolynomialRing(Ring):
     __call__ = ring_new
 
     def from_sympy(self, expr):
-        return QuasiPolynomialElement(expr, *self.symbols)
+        return QuasiPolynomialElement(self, expr)
 
     def to_domain(self):
         return QuasiPolynomialRing(self, self.symbols)

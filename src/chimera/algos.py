@@ -433,13 +433,6 @@ def qplde(mat: sp.Matrix, row: int, c_gen: sp.Symbol) -> tuple[sp.Matrix, sp.Mat
         rej_mat = DomainMatrix(rl, (len(rl), row), mat.domain).transpose()
         c_mat = DomainMatrix(cl, (row, row), mat.domain)
 
-        if 0:
-            # q_r = rej_mat @ a_mat.inv() @ b_vec
-            # q_r = q_r.applyfunc(lambda x: QPoly(x, mat[0, 0].gen))
-            # q_e = q_r.applyfunc(lambda x: make_entire(x, c_gen)[0])
-            # work around domain matrix mayhem
-            q_e = np.array(q_e.tolist())
-
         num_mat, den = a_mat.solve_den(b_vec)
         q_e, _ = make_entire_vec(num_mat, den)
         q_e = rej_mat * q_e
@@ -732,9 +725,7 @@ def sort_shift_intervals(
     # extract row degrees
     (_, ld), (_, td) = get_matrix_terms(mat, q_gen)
     cd = ld - td
-    r_degs = [
-        max([cd[r, c].element for c in range(cd.shape[1])]) for r in range(cd.shape[0])
-    ]
+    r_degs = [max([cd[r, c] for c in range(cd.shape[1])]) for r in range(cd.shape[0])]
 
     # sort them
     r_pair = list(enumerate(r_degs))
@@ -758,25 +749,29 @@ def move_col_degrees_on_diagonal(
     Compute a permutation that moves the highest derivatives from each column on the main diagonal
     """
     (qlc, qld), (qtc, qtd) = get_matrix_terms(mat, q_gen)
-    qt_row_degs = [min([qtd[r, c].element for c in range(mat.shape[1])]) for r in range(mat.shape[0])]
+    qt_row_degs = [
+        min([qtd[r, c] for c in range(mat.shape[1])]) for r in range(mat.shape[0])
+    ]
     # ql_row_degs = [max(qld[r, :]) for r in range(mat.shape[0])]
 
     # make sure that we work with homogenised delays
-    assert all([lrd == qt_row_degs[0] for lrd in qt_row_degs])
+    assert all([trd == qt_row_degs[0] for trd in qt_row_degs])
 
     # extract column degrees but only look at coefficients of largest predictions
     plc, pld = get_leading_term_matrix(qlc, p_gen)
-    p_col_degs = [max(pld[:, c]) for c in range(pld.cols)]
+    p_col_degs = [
+        max([pld[r, c] for r in range(pld.shape[0])]) for c in range(pld.shape[1])
+    ]
 
     # check compatibilities
-    r_compat = [set() for c in range(pld.cols)]
-    for r in range(pld.rows):
-        for c in range(pld.cols):
+    r_compat = [set() for c in range(pld.shape[1])]
+    for r in range(pld.shape[0]):
+        for c in range(pld.shape[1]):
             # element must have col degree
             if pld[r, c] != p_col_degs[c]:
                 continue
-            # element must leading row delayd degree
-            if r < pld.rows - 1 and qtd[r, c] != qt_row_degs[r]:
+            # element must leading row delay-degree
+            if r < pld.shape[0] - 1 and qtd[r, c] != qt_row_degs[r]:
                 continue
             r_compat[c].add(r)
     if any([not s for s in r_compat]):
@@ -784,7 +779,7 @@ def move_col_degrees_on_diagonal(
             "Properties not obtainable by reordering, Matrix is probably not column reduced."
         )
 
-    col_compat = list(zip(list(range(pld.cols)), r_compat))
+    col_compat = list(zip(list(range(pld.shape[1])), r_compat))
 
     # sort entries first that only fit a few rows
     col_compat.sort(key=lambda x: len(x[1]))
@@ -814,14 +809,19 @@ def move_col_degrees_on_diagonal(
 def homogenise_leading_shifts(mat, q_gen, mode):
     (_, ld), (_, td) = get_matrix_terms(mat, q_gen)
     if mode == "delay":
-        r_degs = [min([td[r, c].element for c in range(mat.shape[1])]) for r in range(mat.shape[0])]
+        r_degs = [
+            min([td[r, c] for c in range(mat.shape[1])]) for r in range(mat.shape[0])
+        ]
     elif mode == "pred":
-        r_degs = [max([ld[r, c].element for c in range(mat.shape[1])]) for r in range(mat.shape[0])]
+        r_degs = [
+            max([ld[r, c] for c in range(mat.shape[1])]) for r in range(mat.shape[0])
+        ]
     else:
         raise ValueError(f"Unknown mode {mode}")
 
     mean = sum(r_degs) / len(r_degs)
-    l_mat = DomainMatrix.diag([q_gen ** (mean - rd).as_expr() for rd in r_degs], mat.domain)
+    shifts = [mat.domain({mean - rd: 1}) for rd in r_degs]
+    l_mat = DomainMatrix.diag(shifts, mat.domain)
     mh = l_mat * mat
     # mh.simplify()
     return mh, l_mat
@@ -841,8 +841,12 @@ def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol):
     # 2: shifts
     (l_cffs, l_degs), (t_cffs, t_degs) = get_matrix_terms(mat, q_gen)
     s_degs = l_degs - t_degs
-    row_degs = [max(s_degs[r, :]) for r in range(mat.shape[0])]
-    row_degs_m = [min(t_degs[r, :]) for r in range(mat.shape[0])]
+    row_degs = [
+        max([s_degs[r, c] for c in range(mat.shape[1])]) for r in range(mat.shape[0])
+    ]
+    row_degs_m = [
+        min([t_degs[r, c] for c in range(mat.shape[1])]) for r in range(mat.shape[0])
+    ]
     # row_degs_p = [max(l_degs[r,:]) for r in range(mat.shape[0])]
 
     # 2a: leading delays of each row must be the same
@@ -850,7 +854,7 @@ def check_canonical_form(mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol):
         raise ValueError("Leading row delays are not equal. Homogenise first.")
 
     # 2b: leading shifts of each row must be ascending
-    if not sorted(row_degs):
+    if row_degs != sorted(row_degs):
         raise ValueError("Leading row shift intervals must be ascending.")
 
 

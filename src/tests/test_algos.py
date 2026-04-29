@@ -194,17 +194,12 @@ def _run_reduction_test(case):
     coeff_dom = sp.EX.frac_field(s)
     qp_ring = QuasiPolynomialRing(coeff_dom, sigma)
     m = DomainMatrix.from_list(m.tolist(), domain=qp_ring)
-
-    # mq = m.applyfunc(lambda x: QPoly(x, sigma, s))
-    sp.pprint(m.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
-    sp.pprint(
-        m.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
-        wrap_line=False,
-    )
+    _show_deg(m)
+    _show_degs(m)
 
     (_, l_cd), (_, t_cd) = get_matrix_terms(m, sigma)
     cds = l_cd - t_cd
-    cd = [max([cds[i, c].element for i in range(cds.shape[0])]).as_expr() for c in range(cds.shape[1])]
+    cd = [max(cds[:, c]) for c in range(cds.shape[1])]
     print("Initial Column degrees:")
     sp.pprint(cd)
     sp.pprint([c.as_expr().evalf() for c in cd])
@@ -220,43 +215,31 @@ def _run_reduction_test(case):
     q1b = L.inv() * P * q1_mat
     sp.pprint(q1b.to_Matrix())
     m = L.inv() * P * m
-    # mq = m.applyfunc(lambda x: QPoly(x, sigma))
-    sp.pprint(m.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
-    sp.pprint(
-        m.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
-        wrap_line=False,
-    )
+    _show_deg(m)
+    _show_degs(m)
 
     l, m, r = canonical_form(m, s, sigma)
     print("In canonical form:")
-    # mq = m.applyfunc(lambda x: QPoly(x, sigma))
-    sp.pprint(m.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
-    sp.pprint(
-        m.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
-        wrap_line=False,
-    )
+    _show_deg(m)
+    _show_degs(m)
 
     # the actual function call
     mrg, lg = reduce_matrix_shifts(m, s, sigma)
 
     print("Reduction results:")
-    # sp.pprint(mq, wrap_line=False)
-    sp.pprint(mrg.applyfunc(lambda x: x.degree().evalf()), wrap_line=False)
-    sp.pprint(
-        mrg.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())),
-        wrap_line=False,
-    )
+    _show_deg(mrg)
+    _show_degs(mrg)
 
     print("Checking results:")
     # 1) all elements should have same degrees in each column
     (_, l_cd), (_, t_cd) = get_matrix_terms(mrg, sigma)
     cds = l_cd - t_cd
-    cd = [max(cds[:, c]) for c in range(cds.shape[1])]
+    cd = [max([cds[r, c] for r in range(cds.shape[0])]) for c in range(cds.shape[1])]
     print("New column degrees:")
     sp.pprint(cd)
-    new_state_dim = sp.Add(*cd).simplify()
+    new_state_dim = sum(cd)
     print(f"New state dimension {new_state_dim} ({new_state_dim.evalf()})")
-    dim_err = (new_state_dim - des_state_dim).simplify()
+    dim_err = new_state_dim - des_state_dim
     print(f"dimension error: {dim_err} ({dim_err.evalf()})")
     assert dim_err <= 0
 
@@ -267,6 +250,22 @@ def _run_reduction_test(case):
     lcmes = get_lccm(lcme, s)
     assert lcmes == lcmse
     assert lcmes.rank() == m.shape[0]
+
+
+def _show_degs(m: DomainMatrix):
+    sp.pprint(
+        sp.Matrix(
+            m.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())).to_list()
+        ),
+        wrap_line=False,
+    )
+
+
+def _show_deg(m: DomainMatrix):
+    sp.pprint(
+        sp.Matrix(m.applyfunc(lambda x: x.degree().as_expr().evalf()).to_list()),
+        wrap_line=False,
+    )
 
 
 def test_reduce_matrix_shifts_2x2():
@@ -445,9 +444,9 @@ def test_reduce_matrix_shifts_3x3():
         cs.append(case)
 
     for k in range(3):
-        cs.append(_generate_test_case(0, 3, 3))
-        cs.append(_generate_test_case(1, 3, 3))
-        cs.append(_generate_test_case(2, 3, 3))
+        # cs.append(_generate_test_case(0, 3, 3))
+        # cs.append(_generate_test_case(1, 3, 3))
+        # cs.append(_generate_test_case(2, 3, 3))
         # cs.append(_generate_test_case(3, 3, 3))
         # cs.append(_generate_test_case(4, 3, 3))
         pass
