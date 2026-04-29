@@ -8,6 +8,7 @@ import numpy as np
 import sympy as sp
 from sympy.core.random import seed, shuffle
 from sympy.core.function import AppliedUndef
+from sympy.polys.domains.domainelement import DomainElement
 from sympy.polys.fields import FracElement
 from sympy.polys.matrices import DomainMatrix
 from sympy.polys.rings import PolyElement
@@ -139,13 +140,22 @@ def get_matrix_terms(mat, sym, subs: dict = None):
 
 
 def domain_matrix_from_flat_list(elements, shape):
-    if hasattr(elements[0], "domain"):
-        domain = elements[0].domain
-    elif hasattr(elements[0], "field"):
-            domain = elements[0].field
+    e = elements[0]
+    if isinstance(e, DomainElement):
+        if isinstance(e, PolyElement):
+            domain = e.ring
+        elif isinstance(e, FracElement):
+            base_dom = e.field.domain
+            syms = e.field.symbols
+            domain = base_dom.frac_field(*syms)
+        else:
+            domain = e.domain
+        dm = DomainMatrix.from_list_flat(elements, shape, domain)
     else:
-        domain, elements = DomainMatrix.get_domain(elements)
-    dm = DomainMatrix.from_list_flat(elements, shape, domain)
+        # construct nested list
+        rows, cols = shape
+        elems_nested = [elements[i * cols:(i + 1) * cols] for i in range(rows)]
+        dm = DomainMatrix.from_list_sympy(rows, cols, elems_nested)
     return dm
 
 
@@ -211,7 +221,6 @@ def get_term(
     Returns:
         Tuple of coefficient and exponent for the selected mode.
     """
-
     def _handle_qpoly(_qp: QuasiPolynomialElement):
         lc = _qp.LC()
         ld = _qp.degmax()
@@ -219,8 +228,33 @@ def get_term(
         td = _qp.degmin()
         return (lc, ld), (tc, td)
 
-    def _handle_polylement(_pe):
-        p = sp.Poly.from_dict(_pe.as_expr_dict(), _pe.ring.symbols)
+    def _handle_fracelement(_fe):
+        syms = _fe.field.symbols
+        if sym not in syms:
+            return (_fe, 0), (_fe, 0)
+        num_pe = _fe.numer
+        num_p = sp.Poly(num_pe, *num_pe.ring.symbols, domain=num_pe.ring.domain)
+        den_pe = _fe.denom
+        den_p = sp.Poly(den_pe, *den_pe.ring.symbols, domain=den_pe.ring.domain)
+        return _handle_rational(num_p, den_p)
+
+    def _handle_rational(_np, _dp):
+        (lcn, ldn), (tcn, tdn) = _handle_poly(_np)
+        (lcd, ldd), (tcd, tdd) = _handle_poly(_dp)
+
+        lc = lcn / lcd
+        ld = ldn - ldd
+        if tdn == sp.S.NegativeInfinity:
+            tdn = 0
+        if tdd == sp.S.NegativeInfinity:
+            tdd = 0
+        tc = (tcn / tcd).cancel()
+        td = tdn - tdd
+
+        return (lc, ld), (tc, td)
+
+    def _handle_polyelement(_pe):
+        p = sp.Poly(_pe, *_pe.ring.symbols, domain=_pe.domain)
         return _handle_poly(p)
 
     def _handle_poly(_p: sp.Poly):
@@ -229,32 +263,6 @@ def get_term(
         td = sp.Poly(_p.EM().as_expr(), _p.gen).degree()
         tc = _p.coeff_monomial(_p.gen**td)
         return (lc, ld), (tc, td)
-
-    def _handle_rational(_np, _dp):
-        lc = (_np.LC() / _dp.LC()).cancel()
-        ld = _np.degree() - _dp.degree()
-
-        tdn = sp.Poly(_np.EM().as_expr(), _np.gen).degree()
-        tdd = sp.Poly(_dp.EM().as_expr(), _dp.gen).degree()
-        if tdn == sp.S.NegativeInfinity:
-            tdn = 0
-        if tdd == sp.S.NegativeInfinity:
-            tdd = 0
-        tcn = _np.coeff_monomial(_np.gen**tdn)
-        tcd = _dp.coeff_monomial(_dp.gen**tdd)
-        tc = (tcn / tcd).cancel()
-        td = tdn - tdd
-
-        return (lc, ld), (tc, td)
-
-    def _handle_fracelement(_fe):
-        syms = _fe.field.symbols
-        if sym not in syms:
-            return (_fe, 0), (_fe, 0)
-        num = _fe.numer
-        den = _fe.denom
-        # np, dp = [sp.Poly(expr, syms) for expr in (num, den)]
-        return _handle_rational(num, den)
 
     def _handle_qpoly_coefficients(_p, sym):
         ld = sp.S.NegativeInfinity
@@ -291,7 +299,7 @@ def get_term(
 
     # maybe it is a PolyElement?
     if isinstance(e, PolyElement):
-        return _handle_polylement(e)
+        return _handle_polyelement(e)
 
     # maybe it is a polynomial expression?
     if e.is_Poly:
