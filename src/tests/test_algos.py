@@ -355,15 +355,13 @@ def test_reduce_matrix_shifts_3x2():
         )
         cs.append(case)
     for k in range(10):
-        # cs.append(_generate_test_case(1, 3, 2))
-        # cs.append(_generate_test_case(2, 3, 2))
-        pass
+        cs.append(_generate_test_case(1, 3, 2))
+        cs.append(_generate_test_case(2, 3, 2))
 
     for c in cs:
         _run_reduction_test(c)
 
 
-# @pytest.mark.skip("Extensive Benchmark, takes quite long")
 def test_reduce_matrix_shifts_3x3():
     print("3 x 3 cases:")
     cs = []
@@ -443,13 +441,33 @@ def test_reduce_matrix_shifts_3x3():
         )
         cs.append(case)
 
-    for k in range(3):
-        # cs.append(_generate_test_case(0, 3, 3))
-        # cs.append(_generate_test_case(1, 3, 3))
-        # cs.append(_generate_test_case(2, 3, 3))
-        # cs.append(_generate_test_case(3, 3, 3))
-        # cs.append(_generate_test_case(4, 3, 3))
-        pass
+    for k in range(10):
+        cs.append(_generate_test_case(8, 3, 3))
+
+    for c in cs:
+        _run_reduction_test(c)
+
+
+def test_reduce_matrix_shifts_4x4():
+    print("4 x 4 cases:")
+    cs = []
+
+    if 0:
+        case = (
+            Matrix(
+                [[-5, -5, -3, -3], [-5, -5, 4, -1], [-4, -1, 2, 1], [-5, -5, -3, 2]]
+            ),
+            Matrix(0, 4, []),
+            Matrix(4, 0, []),
+            Matrix([[2, 9, -8, 9], [1, -6, 9, 0], [-1, 3, -4, 8], [-9, -6, 10, 1]]),
+            Matrix([[7, -4, 4, -2], [6, 9, 8, 7], [6, -5, -10, 10], [-2, -10, -10, 3]]),
+            [sqrt(3), sqrt(5), sqrt(7), sqrt(11)],
+            [-sqrt(5), -sqrt(7), -3, -sqrt(11)],
+        )
+        cs.append(case)
+
+    for k in range(1,10):
+        cs.append(_generate_test_case(k, 4, 4))
 
     for c in cs:
         _run_reduction_test(c)
