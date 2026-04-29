@@ -77,7 +77,7 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
 
     def _cmp(q1, q2, op):
         if q1.ring.is_element(q2):
-            return op(q1.sort_key(), q2.sort_key())
+            return op(q1.degree(), q2.degree())
         else:
             return NotImplemented
 
