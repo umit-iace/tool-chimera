@@ -3,6 +3,7 @@ Utility functions
 """
 
 import random as rd
+from typing import Callable
 
 import numpy as np
 import sympy as sp
@@ -176,11 +177,35 @@ def get_leading_column_degrees(
     Extract the highest degrees of each column
     """
     (coeffs, degs), _ = get_matrix_terms(mat, sym, subs)
-    col_degs = [
-        max([degs[i, c].element for i in range(mat.shape[0])])
-        for c in range(mat.shape[1])
-    ]
+    col_degs = _leading_col_degs(degs)
     return col_degs
+
+
+def _leading_col_degs(degs: DomainMatrix | Matrix) -> list[DomainElement | sp.Expr]:
+   return _col_degs(degs, max)
+
+
+def _trailing_col_degs(degs: DomainMatrix | Matrix) -> list[DomainElement | sp.Expr]:
+    return _col_degs(degs, min)
+
+
+def _leading_row_degs(degs: DomainMatrix | Matrix) -> list[DomainElement | sp.Expr]:
+    return _col_degs(degs.transpose(), max)
+
+
+def _trailing_row_degs(degs: DomainMatrix | Matrix) -> list[DomainElement | sp.Expr]:
+    return _col_degs(degs.transpose(), min)
+
+
+def _col_degs(degs: DomainMatrix | Matrix, cmp: Callable) -> list[DomainElement | sp.Expr]:
+    c_degs = []
+    for c in range(degs.shape[1]):
+        cd = []
+        for r in range(degs.shape[0]):
+            d = degs[r, c]
+            cd.append(d.element if isinstance(d, DomainScalar) else d)
+        c_degs.append(cmp(cd))
+    return c_degs
 
 
 def get_trailing_column_degrees(
