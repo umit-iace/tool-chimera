@@ -416,20 +416,28 @@ def is_in_row_hermite_form(H, x, domain=QQ):
 
 
 def column_reduced_form(
-    mat: sp.Matrix, sym: sp.Symbol, debug: bool = False
-) -> tuple[sp.Matrix, sp.Matrix]:
+    mat: sp.Matrix | DomainMatrix, sym: sp.Symbol, debug: bool = False
+) -> tuple[sp.Matrix | DomainMatrix, sp.Matrix | DomainMatrix]:
     """
     Compute the column reduced form S of a matrix mat by using
     an unimodular right transformation :math:`M U = S`.
 
     Returns: Tuple(S, U)
     """
-    assert mat.rank() == min(*mat.shape)
-    m = mat.copy()
-    u = DomainMatrix.eye(m.shape[1], mat.domain)
-    # u = m.eye(m.shape[1], m.domain)
-    if sym not in mat.to_Matrix().free_symbols:
+    if mat.rank() < min(*mat.shape):
+        raise ValueError("Provided matrix has no full generic rank")
+
+    if isinstance(mat, DomainMatrix):
+        m = mat.copy()
+    else:
+        if sym not in mat.free_symbols:
+            return mat, Matrix.eye(*mat.shape)
+        m = DomainMatrix.from_Matrix(mat)
+    u = DomainMatrix.eye(m.shape[1], m.domain)
+
+    if not m.domain.is_PolynomialRing or sym not in m.domain.symbols:
         return m, u
+
     while not is_col_reduced(m, sym):
         # sort into decreasing column degrees
         cds = get_leading_column_degrees(m, sym)
@@ -438,7 +446,7 @@ def column_reduced_form(
             cds = np.array(cds)[s_idxs].tolist()
             perm = sp.combinatorics.Permutation(s_idxs)
             p = sp.PermutationMatrix(perm).as_explicit().T
-            p = DomainMatrix.from_list(p.tolist(), mat.domain)
+            p = DomainMatrix.from_list(p.tolist(), m.domain)
             m = m * p
             u = u * p
 
@@ -449,17 +457,13 @@ def column_reduced_form(
             col = mh[:, k]
             sub = mh[:, k + 1 :]
             c_sym = sp.symbols(f"c_{k + 1}:{m.shape[1]}")
-            # c_sol = sp.linsolve((sub, col), *c_sym)
-            sol_num, sol_den = sub.solve_den(col)
-            if sol_num:
+            c_sol = sp.linsolve((sub, col), *c_sym)
+            if c_sol:
                 # success, extract the coefficients
                 triv_d = {c: 0 for c in c_sym}
                 c_dict = {idx: 0 for idx in range(m.shape[1])}
-                # c_dict |= {
-                    # k + 1 + idx: cs.subs(triv_d) for idx, cs in enumerate(c_sol.args[0])
-                # }
                 c_dict |= {
-                    k + 1 + idx[0]: cs.to_field() / sol_den for idx, cs in enumerate(sol_num.iter_items())
+                    k + 1 + idx: cs.subs(triv_d) for idx, cs in enumerate(c_sol.args[0])
                 }
                 break
         else:
@@ -471,22 +475,17 @@ def column_reduced_form(
         # eliminate kth column from mh
         rd = {}
         for i in range(m.shape[1]):
-            rd[i, i] = 1
+            rd[i] = {i: 1}
             if i != k:
-                if 0:
-                    monom = {cds[k] - cds[i]: -c_dict[i]}
-                    poly = m.domain.from_dict(monom)
-                    rd[i, k] = poly
-                else:
-                    rd[i, k] = -c_dict[i] * sym ** (cds[k] - cds[i])
-        # r = sp.Matrix.from_dok(m.shape[1], m.shape[1], rd)
-        r = DomainMatrix.from_dok(rd, (m.shape[1], m.shape[1]), m.domain)
+                rd[i][k] = -c_dict[i] * sym ** (cds[k] - cds[i])
+        r = DomainMatrix.from_dict_sympy(m.shape[1], m.shape[1], rd)
 
         # apply the transform
         m = m * r
-        # m.simplify()
         u = u * r
 
+    if isinstance(mat, Matrix):
+        return m.to_Matrix(), u.to_Matrix()
     return m, u
 
 
@@ -514,6 +513,5 @@ def random_col_reduced_mat(m, n, coldeg_sum, c_min, c_max, p_gen):
     mat = sp.Matrix.zeros(m, n)
     while mat.rank() < min(m, n):
         mat = random_poly_mat(m, n, cds, c_min, c_max, p_gen)
-    mat = DomainMatrix.from_Matrix(mat)
     mat, _ = column_reduced_form(mat, p_gen)
     return mat

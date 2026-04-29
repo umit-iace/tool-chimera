@@ -159,6 +159,7 @@ def test_column_reduced_form():
     assert not is_col_reduced(mat, s)
     good.append(mat)
 
+    # singular matrix
     mat = sp.Matrix([
         [3, -3 * s - 4, -1],
         [-2, -1, -4],
@@ -166,6 +167,7 @@ def test_column_reduced_form():
     assert not is_col_reduced(mat, s)
     bad.append(mat)
 
+    print("Generating test cases...")
     for k in range(10):
         while True:
             mat = random_poly_mat(5, 6, 5, -5, 5, s)
@@ -181,11 +183,11 @@ def test_column_reduced_form():
         red, r = column_reduced_form(m, s)
         assert is_col_reduced(red, s)
 
-    print("Good list:")
+    print("Testing the good list:")
     for b in good:
         _red_col(b)
 
-    print("Bad list:")
+    print("Testing the bad list:")
     for b in bad:
         with pytest.raises(ValueError):
             _red_col(b)
