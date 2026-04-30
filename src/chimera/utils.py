@@ -293,7 +293,7 @@ def get_term(
 
     def _handle_polyelement(_pe):
         lc = _pe.LC
-        ld = _pe.LM[0]
+        ld = _pe.degree()
         td = _pe.tail_degree()
         if td == sp.S.NegativeInfinity:
             tc = 0

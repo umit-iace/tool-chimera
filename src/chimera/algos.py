@@ -10,6 +10,7 @@ import numpy as np
 from sympy import Basic, Expr, Float, Integer, Rational, Symbol
 from sympy.core.numbers import ComplexInfinity, Infinity, NaN, NegativeInfinity, Zero
 from sympy.polys.matrices import DomainMatrix
+from sympy.polys.matrices.domainscalar import DomainScalar
 
 from .poly import echelon_form, column_reduced_form
 from .qpoly import QPoly, QuasiPolynomialElement
@@ -369,25 +370,25 @@ def qplde(mat: sp.Matrix, row: int, c_gen: sp.Symbol) -> tuple[sp.Matrix, sp.Mat
     x = mat[row, :row].transpose()
     y = DomainMatrix.from_list([mat.diagonal()[:row]], mat.domain).transpose()
     logger.debug(
-        f"Degrees of divisors: {[(q.degmin().evalf(), q.degmax().evalf()) for q in y.iter_values()]}"
+        f"Degrees of divisors: {[(q.degmin().evalf(), q.degmax().evalf()) for q in y.flat()]}"
     )
 
-    q = DomainMatrix.zeros(x.shape, x.domain)
-    r = x.copy()
+    quo = DomainMatrix.zeros(x.shape, x.domain)
+    rem = x.copy()
     while True:
         logger.debug(
             f"Degrees of remainder: {
-                [(_r.degmin().evalf(), _r.degmax().evalf()) for _r in r.iter_values()]
+                [(_r.degmin().evalf(), _r.degmax().evalf()) for _r in rem.flat()]
             }"
         )
 
         # check column compatibilities
         compat_max = []
         compat_min = []
-        for _y in y.iter_values():
+        for _y in y.flat():
             dmax = []
             dmin = []
-            for _r in r.iter_values():
+            for _r in rem.flat():
                 max_c = sp.assumptions.ask(_r.degmax() > _y.degmax())
                 dmax.append(max_c)
                 min_c = sp.assumptions.ask(_r.degmin() < _y.degmin())
@@ -408,11 +409,11 @@ def qplde(mat: sp.Matrix, row: int, c_gen: sp.Symbol) -> tuple[sp.Matrix, sp.Mat
         for i in range(row):
             cl.append([mat[j, i].element for j in range(row)])
             if compat_max[i]:
-                al.append([mat[j, i].element.LM() for j in range(row) if compat_max[j]])
-                bl.append([r[i, 0].element.LM()])
+                al.append([mat[j, i].element.LT() for j in range(row) if compat_max[j]])
+                bl.append([rem[i, 0].element.LT()])
             elif compat_min[i]:
-                al.append([mat[j, i].element.TM() for j in range(row) if compat_min[j]])
-                bl.append([r[i, 0].element.TM()])
+                al.append([mat[j, i].element.TT() for j in range(row) if compat_min[j]])
+                bl.append([rem[i, 0].element.TT()])
             else:
                 continue
             rl.append([1 if i == j else 0 for j in range(row)])
@@ -421,32 +422,58 @@ def qplde(mat: sp.Matrix, row: int, c_gen: sp.Symbol) -> tuple[sp.Matrix, sp.Mat
             logger.debug("Remainder small enough")
             break
 
-        # a_mat = sp.Matrix(al)
-        # b_vec = sp.Matrix(bl)
-        # rej_mat = sp.Matrix(rl).T
-        # a_mat = np.array(al)
-        # b_vec = np.array(bl)
-        # rej_mat = np.array(rl).T
-        # c_mat = np.array(cl)
         a_mat = DomainMatrix(al, (len(al), len(al)), mat.domain)
         b_vec = DomainMatrix(bl, (len(bl), 1), mat.domain)
         rej_mat = DomainMatrix(rl, (len(rl), row), mat.domain).transpose()
         c_mat = DomainMatrix(cl, (row, row), mat.domain)
 
-        num_mat, den = a_mat.solve_den(b_vec)
-        q_e, _ = make_entire_vec(num_mat, den)
-        q_e = rej_mat * q_e
-        r = r - c_mat * q_e
-        q = q + q_e
+        q_num, den = solve_eq_system(a_mat, b_vec)
 
-    return q, r
+        q_e, _ = make_entire_vec(q_num, den)
+        q_e = rej_mat * q_e
+        rem = rem - c_mat * q_e
+        quo = quo + q_e
+
+    return quo, rem
+
+
+def solve_eq_system(
+    a_mat: DomainMatrix, b_vec: DomainMatrix
+) -> tuple[DomainMatrix, Any]:
+    # solve eq sys
+    m, n = a_mat.shape
+    a_mat_aug = a_mat.hstack(b_vec)
+    a_mat_rref, den, pivots = a_mat_aug.rref_den()
+
+    # check for zero rows
+    for _r in range(m):
+        if all([a_mat_rref[_r, c] == a_mat.domain.zero for c in range(n)]):
+            if a_mat_rref[_r, -1] != a_mat.domain.zero:
+                raise ValueError("System has no solution")
+            z_idx = _r
+            break
+    else:
+        z_idx = m
+
+    # disassemble the augmented matrix in rre form
+    s_mat = a_mat_rref[:z_idx, z_idx:-1]
+    c_vec = a_mat_rref[:z_idx, -1]
+
+    # if the system is underdetermined, chose free vars to zero
+    q_free = DomainMatrix.zeros((n - z_idx, 1), a_mat.domain)
+    # if the system is underdetermined, chose free vars to one
+    # q_free = DomainMatrix.ones((n-z_idx, 1), a_mat.domain) * den
+
+    q_dep = c_vec - s_mat * q_free
+    q_num = DomainMatrix.vstack(q_dep, q_free)
+
+    return q_num, den
 
 
 def make_entire(
     expr: QPoly,
     rat_sym: sp.Symbol,
     gen_expr: sp.Expr = None,
-    verbose: bool = False,
 ) -> Tuple[QPoly, sp.Expr]:
     """
     Convert a generalised polynomial in *sig_gen* with rational coefficients
@@ -466,13 +493,6 @@ def make_entire(
     """
     if expr.is_zero:
         return expr, sp.S.Zero
-    if gen_expr is None:
-        gen_expr = sp.exp(rat_sym)
-    if rat_sym not in gen_expr.free_symbols:
-        raise ValueError(
-            "The expression to substitute for the GenPoly generator must "
-            "contain the free variable of the rational coefficients."
-        )
 
     # extract the common denominator
     num, den = expr.as_numer_denom()
@@ -484,79 +504,91 @@ def make_entire(
 
     # start without denominator and iteratively add zeroes
     eq = QPoly(num / lc, *expr.gens)
-    ee, p = _entire_term(eq, expr, rat_sym, rts)
+    ee, p = _entire_term(eq, rat_sym, rts, gen_expr)
     return expr + p, p
 
 
 def make_entire_vec(
     num_vec: DomainMatrix,
     den: QuasiPolynomialElement,
-) -> DomainMatrix:
+) -> Tuple[DomainMatrix, DomainMatrix]:
+    # split den in monom and coeff
     assert den.is_term
-    # divide num by den monomial
-    lm = den.LM()
-    num_vec_n = num_vec.applyfunc(lambda e: e.exquo(lm))
+    den_mon = den.LM()
+    den_coeff = den.LC()
 
-    zc = den.coeff(0)
-    if zc == zc.field.zero:
-        return num_vec_n, DomainMatrix.zeros(num_vec.shape, zc.field)
+    # convert to ring and factorise the denominator,
+    # extract leading coefficient for normalisation
+    den_polyelem = den_coeff.numer.exquo(den_coeff.denom)
+    den_poly = sp.Poly(
+        den_polyelem.to_dense(),
+        gens=den_polyelem.ring.symbols,
+        domain=den_polyelem.ring.domain,
+    )
+    den_poly_lc = den_poly.LC()
+    rts = sp.roots(den_poly, den_poly.gen)
 
-    # factorise the denominator, extract leading coefficient for normalisation
-    p_den = zc.to_ring()
-    lc = p_den.LC()
-    rts = sp.roots(p_den, p_den.gen)
+    # divide num vector by den
+    den_term = (den_mon.exponents()[0], den_poly_lc)
+    num_vec_n = num_vec.applyfunc(lambda e: e.quo_term(den_term))
 
     e_vec = []
     p_vec = []
-    for elem in num_vec_n:
+    for e_rat in num_vec_n.flat():
         # start without denominator and iteratively add zeroes
-        e0 = elem / lc
-        ee, p = _entire_term(e0, p_den.gen, rts)
-        e_vec.append([ee])
-        e_vec.append([p])
+        e_ent, p = _entire_term(e_rat, den_poly.gen, rts)
+        e_vec.append([e_ent])
+        p_vec.append([p])
 
     e_vec = DomainMatrix(e_vec, num_vec.shape, num_vec.domain)
-    p_vec = DomainMatrix(e_vec, num_vec.shape, num_vec.domain.domain)
+    p_vec = DomainMatrix(p_vec, num_vec.shape, num_vec.domain.domain)
 
     return e_vec, p_vec
 
 
 def _entire_term(
-    eq: Basic
-    | QPoly
-    | ComplexInfinity
-    | NaN
-    | Rational
-    | Zero
-    | Infinity
-    | NegativeInfinity
-    | Expr
-    | Float
-    | Any,
+    q: QuasiPolynomialElement,
     rat_sym: Symbol,
-    rts: dict[Expr, Any] | dict[Any, Any] | list[Any] | Any,
+    rts: dict[Expr, int],
+    gen_expr: sp.Expr = None,
 ) -> tuple[QuasiPolynomialElement, QuasiPolynomialElement]:
+    if gen_expr is None:
+        gen_expr = sp.exp(rat_sym)
+    if rat_sym not in gen_expr.free_symbols:
+        raise ValueError(
+            "The expression to substitute for the GenPoly generator must "
+            "contain the free variable of the rational coefficients."
+        )
+
+    qe = q.copy()
     for r, m in rts.items():
         logger.debug(f"Lifting root at {rat_sym}={r} with multiplicity {m}")
 
         # compute derivatives
-        eq_k_ds = [eq.as_expr()]
+        qe_k_ds = [qe.as_expr().subs(q.gen, gen_expr)]
         for i in range(1, m):
-            eq_k_ds.append(eq_k_ds[-1].diff(rat_sym))
+            qe_k_ds.append(qe_k_ds[-1].diff(rat_sym))
 
         # compute the limit at s = r
-        eq_at_r = sp.Add(
-            *[
-                eq_k_ds[i].subs(rat_sym, r) * (rat_sym - r) ** i / sp.factorial(i)
-                for i in range(m)
-            ]
-        )
-        # include multiple roots in one step
-        eq = (eq - eq_at_r) / (rat_sym - r) ** m
+        terms = []
+        for i in range(m):
+            s_num, s_den = [p.subs(rat_sym, r) for p in qe_k_ds[i].as_numer_denom()]
+            if s_den == 0:
+                qe_k_at_r = s_num
+                offset = 1
+            else:
+                qe_k_at_r = s_num / s_den
+                offset = 0
+            term = qe_k_at_r * (rat_sym - r) ** (i-offset) / sp.factorial(i)
+            terms.append(term)
+        qe_at_r = sum(terms)
 
-    # add offset term to original expression
-    p = eq.as_dict().get(0, sp.S.Zero)
-    return eq, p
+        # include multiple roots in one step
+        qe = (qe - qe_at_r) / (rat_sym - r) ** m
+
+    # extract correction term
+    p = qe.coeff(0)
+    return qe, p
 
 
 def qplde_single(x, y, c_gen):
@@ -770,7 +802,7 @@ def move_col_degrees_on_diagonal(
             # element must have col degree
             if pld[r, c] != p_col_degs[c]:
                 continue
-            # element must leading row delay-degree
+            # element must have leading row delay-degree
             if r < pld.shape[0] - 1 and qtd[r, c] != qt_row_degs[r]:
                 continue
             r_compat[c].add(r)
@@ -785,19 +817,34 @@ def move_col_degrees_on_diagonal(
     col_compat.sort(key=lambda x: len(x[1]))
 
     # select columns
+    qlc_tent = qlc.copy() * 0
     new_cols = [None] * mat.shape[1]
     for i in range(mat.shape[1]):
         c, adm_rs = col_compat[i]
         for r in adm_rs:
             if new_cols[r] is None:
+                # check if placement results in well posed system
+                for _r in range(qlc_tent.shape[0]):
+                    t_elem = qlc[_r, r]
+                    qlc_tent[_r, i] = (
+                        t_elem.element if isinstance(t_elem, DomainScalar) else t_elem
+                    )
+                if len(adm_rs) > 1 and qlc_tent[: i + 1, : i + 1].rank() < i + 1:
+                    continue
+
+                # fix the row
                 new_cols[r] = c
-                # remove row for compatibility list and sort again
-                for i in range(len(col_compat)):
-                    col_compat[i][1].discard(r)
+
+                # remove row from compatibility list and sort again
+                for j in range(len(col_compat)):
+                    col_compat[j][1].discard(r)
                 col_compat.sort(key=lambda x: len(x[1]))
                 break
         else:
             raise ValueError
+    assert all(
+        [qlc_tent[:i, :i].rank() == i for i in range(1, min(qlc_tent.shape) + 1)]
+    )
 
     # build permutation matrix
     perm = sp.combinatorics.Permutation(new_cols)

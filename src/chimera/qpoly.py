@@ -59,6 +59,21 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
         """Return a copy of quasi polynomial self."""
         return self.new(self)
 
+    def subs(self, x, a=None):
+        if isinstance(x, list) and a is None:
+            f = self.copy()
+            for X, a in x:
+                f = f.subs(X, a)
+            return f
+
+        ring = self.ring
+        a = ring.domain.convert(a)
+        terms = {}
+        for monom, coeff in self.iterterms():
+            terms[monom.subs(x,a)] = coeff.subs(x,a)
+        syms = [s.subs(x,a) for s in ring.symbols]
+        raise NotImplementedError
+
     def as_expr(self):
         return self.dict_to_expr(self.to_dict(), *self.ring.symbols)
 
@@ -98,7 +113,7 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
 
     @property
     def is_monomial(self):
-        return not self or (len(self) == 1 and self.LC == 1)
+        return not self or (len(self) == 1 and self.LC() == 1)
 
     @property
     def is_term(self):
@@ -344,10 +359,9 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
 
     def add_ground(f, g):
         if g == S.Zero:
-            return QuasiPolynomialElement(f, *f.gens)
-        rd = f.as_dict()
-        c0 = {0: rd.get(0, S.Zero) + g}
-        return QuasiPolynomialElement.from_dict(rd | c0, *f.gens)
+            return f.copy()
+        c0 = {0: f.coeff(0) + g}
+        return QuasiPolynomialElement.from_dict(f.to_dict() | c0, f.ring)
 
     def add(f, g):
         if not f:
@@ -357,7 +371,7 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
             if f.gen not in g.as_expr().free_symbols:
                 return f.add_ground(g)
             else:
-                g = QuasiPolynomialElement(g, *f.gens)
+                g = QuasiPolynomialElement.from_expr(g, f.ring)
 
         # extract exponents
         fe = set(f.exponents())
@@ -436,11 +450,8 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
             rd[exp] = cff / g
         return QuasiPolynomialElement.from_dict(rd, f.ring)
 
-    def div(f, g):
-        if not isinstance(g, QuasiPolynomialElement):
-            return f.div_ground(g)
-        assert f.ring.is_element(g)
-        assert not g.is_zero
+    def _qdiv(f, g):
+
 
         g_dmax = g.degmax()
         g_dmin = g.degmin()
@@ -473,6 +484,13 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
             q += q_k
         return q, r
 
+    def div(f, g):
+        if not isinstance(g, QuasiPolynomialElement):
+            return f.div_ground(g)
+        assert f.ring.is_element(g)
+        assert not g.is_zero
+        return f._qdiv(g)
+
     def rdiv(f, g):
         fi = f ** (-1)
         g = f.ring(g)
@@ -493,6 +511,37 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
             terms = [ (monom, coeff // x) for monom, coeff in f.iterterms() if not (coeff % x) ]
 
         return f.new(terms)
+
+    def _term_div(self, a_lm_a_lc, b_lm_b_lc):
+        """ Copied from PolyElement """
+        zm = self.ring.zero_monom
+        domain = self.ring.domain
+        domain_quo = domain.quo
+
+        a_lm, a_lc = a_lm_a_lc
+        b_lm, b_lc = b_lm_b_lc
+        if b_lm == zm: # apparently this is a very common case
+            monom = a_lm
+        else:
+            monom = a_lm - b_lm
+
+        if monom is not None:
+            return monom, domain_quo(a_lc, b_lc)
+        else:
+            return None
+
+    def quo_term(f, term):
+        monom, coeff = term
+
+        if not coeff:
+            raise ZeroDivisionError("polynomial division")
+        elif not f:
+            return f.ring.zero
+        elif monom == f.ring.zero_monom:
+            return f.quo_ground(coeff)
+
+        terms = [f._term_div(t, term) for t in f.iterterms() ]
+        return f.new([ t for t in terms if t is not None ])
 
     def exquo(f, G):
         q, r = f.div(G)
@@ -610,32 +659,36 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
         for a in args:
             if m is None or sp.assumptions.ask(a > m):
                 m = a
-        if m is None:
-            return default
-        else:
-            return m
+        return default if m is None else m
 
     def _smin(self, args, default=0):
         m = None
         for a in args:
             if m is None or sp.assumptions.ask(a < m):
                 m = a
-        if m is None:
-            return default
-        else:
-            return m
+        return default if m is None else m
+
+    def LT(self):
+        """ Return the leading term """
+        dm = self.degmax()
+        return QuasiPolynomialElement.from_list(
+            [(dm, self.coeff(dm))], self.ring
+        )
+
+    def TT(self):
+        """ Return the trailing term """
+        dm = self.degmin()
+        return QuasiPolynomialElement.from_list(
+            [(dm, self.coeff(dm))], self.ring
+        )
 
     def LM(self, s_dict: dict = None):
-        """Return the leading monom"""
-        return QuasiPolynomialElement.from_list(
-            [(self.degmax(), self[self.degmax()])], self.ring
-        )
+        """ Return the leading monom """
+        return QuasiPolynomialElement.from_dict({self.degmax(): 1}, self.ring)
 
     def TM(self, s_dict: dict = None):
         """Return the trailing monom"""
-        return QuasiPolynomialElement.from_list(
-            [(self.degmin(), self[self.degmin()])], self.ring
-        )
+        return QuasiPolynomialElement.from_dict({self.degmin(): 1}, self.ring)
 
     def LC(self, s_dict: dict = None) -> sp.Expr:
         """Return the Leading coefficient"""
@@ -658,6 +711,10 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
             return self[exp]
         else:
             return self.ring.domain.zero
+
+    def iterterms(self):
+        """Iterator over terms of a quasipolynomial. """
+        return iter(self.items())
 
     # def get_coeff_denom_lcm(self) -> sp.Expr:
     #     """

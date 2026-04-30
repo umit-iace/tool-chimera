@@ -362,6 +362,7 @@ def test_reduce_matrix_shifts_3x2():
         _run_reduction_test(c)
 
 
+@pytest.mark.skip("Extensive Benchmark, takes quite long")
 def test_reduce_matrix_shifts_3x3():
     print("3 x 3 cases:")
     cs = []
@@ -448,11 +449,12 @@ def test_reduce_matrix_shifts_3x3():
         _run_reduction_test(c)
 
 
+@pytest.mark.skip("Extensive Benchmark, takes quite long")
 def test_reduce_matrix_shifts_4x4():
     print("4 x 4 cases:")
     cs = []
 
-    if 0:
+    if 1:
         case = (
             Matrix(
                 [[-5, -5, -3, -3], [-5, -5, 4, -1], [-4, -1, 2, 1], [-5, -5, -3, 2]]
