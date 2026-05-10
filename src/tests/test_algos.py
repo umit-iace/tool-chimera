@@ -1,31 +1,31 @@
-import random
 import logging
+import random
 from functools import reduce
 
+import pytest
 import sympy as sp
 from numpy import dtype
-from sympy import Matrix, sqrt, Integer
-from sympy.polys.matrices import DomainMatrix
+from sympy import Integer, Matrix, sqrt
 from sympy.core.random import sample
-import pytest
+from sympy.polys.matrices import DomainMatrix
 
 from chimera import QPoly, QuasiPolynomialRing
 from chimera.algos import (
-    reduce_matrix_shifts,
-    qpld_single,
-    qplde_single,
-    make_entire,
-    qplde,
     canonical_form,
-    move_col_degrees_on_diagonal,
     check_col_degrees_on_diagonal,
-)
-from chimera.utils import (
-    get_lccm,
-    check_singularities,
-    get_matrix_terms,
+    make_entire,
+    move_col_degrees_on_diagonal,
+    qpld_single,
+    qplde,
+    qplde_single,
+    reduce_matrix_shifts,
 )
 from chimera.poly import random_col_reduced_mat
+from chimera.utils import (
+    check_singularities,
+    get_lccm,
+    get_matrix_terms,
+)
 
 # debugging
 lg = logging.getLogger("chimera.algos").setLevel(logging.DEBUG)
@@ -362,7 +362,7 @@ def test_reduce_matrix_shifts_3x2():
         _run_reduction_test(c)
 
 
-@pytest.mark.skip("Extensive Benchmark, takes quite long")
+# @pytest.mark.skip("Extensive Benchmark, takes quite long")
 def test_reduce_matrix_shifts_3x3():
     print("3 x 3 cases:")
     cs = []

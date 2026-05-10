@@ -3,24 +3,24 @@ Custom algorithms for the project
 """
 
 import logging
-from typing import Union, Tuple, Any
+from typing import Any, Tuple, Union
 
-import sympy as sp
 import numpy as np
+import sympy as sp
 from sympy import Basic, Expr, Float, Integer, Rational, Symbol
 from sympy.core.numbers import ComplexInfinity, Infinity, NaN, NegativeInfinity, Zero
 from sympy.polys.matrices import DomainMatrix
 from sympy.polys.matrices.domainscalar import DomainScalar
 
-from .poly import echelon_form, column_reduced_form
+from .poly import column_reduced_form, echelon_form
 from .qpoly import QPoly, QuasiPolynomialElement
 from .utils import (
+    factor_diag_post,
+    get_lccm,
+    get_leading_row_degrees,
+    get_leading_term_matrix,
     get_matrix_terms,
     get_row_degrees,
-    get_leading_term_matrix,
-    get_leading_row_degrees,
-    get_lccm,
-    factor_diag_post,
 )
 
 __all__ = [
@@ -565,14 +565,17 @@ def _entire_term(
         logger.debug(f"Lifting root at {rat_sym}={r} with multiplicity {m}")
 
         # compute derivatives
-        qe_k_ds = [qe.as_expr().subs(q.gen, gen_expr)]
+        # qe_k_ds = [qe.as_expr().subs(q.gen, gen_expr)]
+        qe_k_ds = [qe]
         for i in range(1, m):
             qe_k_ds.append(qe_k_ds[-1].diff(rat_sym))
 
         # compute the limit at s = r
         terms = []
         for i in range(m):
-            s_num, s_den = [p.subs(rat_sym, r) for p in qe_k_ds[i].as_numer_denom()]
+            num, den =  qe_k_ds[i].as_numer_denom()
+            s_num = num.as_expr().subs(q.gen, gen_expr).subs(rat_sym, r)
+            s_den = den.as_expr().subs(rat_sym, r)
             if s_den == 0:
                 qe_k_at_r = s_num
                 offset = 1

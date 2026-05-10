@@ -1,17 +1,17 @@
 from collections import defaultdict
-from operator import lt, le, gt, ge
 from functools import reduce
-from typing import Union, Any
+from operator import ge, gt, le, lt
+from typing import Any, Union
 
 import sympy as sp
-from sympy import ExactQuotientFailed, CoercionFailed
+from sympy import CoercionFailed, ExactQuotientFailed
 from sympy.core.numbers import S
 from sympy.core.sympify import CantSympify
-from sympy.polys.fields import FracElement
 from sympy.polys.domains.domain import DomainElement
 from sympy.polys.domains.ring import Ring
-from sympy.printing.defaults import DefaultPrinting
+from sympy.polys.fields import FracElement
 from sympy.polys.orderings import lex
+from sympy.printing.defaults import DefaultPrinting
 
 __all__ = ["QPoly", "QuasiPolynomialElement", "QuasiPolynomialRing"]
 
@@ -451,8 +451,9 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
         return QuasiPolynomialElement.from_dict(rd, f.ring)
 
     def _qdiv(f, g):
-
-
+        """
+        Quasipolynomial long division
+        """
         g_dmax = g.degmax()
         g_dmin = g.degmin()
 
@@ -462,8 +463,8 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
             r_dmax = r.degmax()
             r_dmin = r.degmin()
 
-            degmax_correct = sp.assumptions.ask(r_dmax <= g_dmax)
-            degmin_correct = sp.assumptions.ask(r_dmin >= g_dmin)
+            degmax_correct = sp.assumptions.ask(r_dmax < g_dmax)
+            degmin_correct = sp.assumptions.ask(r_dmin > g_dmin)
 
             if degmax_correct is None or degmin_correct is None:
                 raise ValueError(
@@ -565,20 +566,20 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
     def _eval_is_polynomial(self, gens):
         return False
 
-    @staticmethod
-    def _get_coeff_domain(*c_gens):
-        return sp.EX.frac_field(*c_gens)
+    # @staticmethod
+    # def _get_coeff_domain(*c_gens):
+    #     return sp.EX.frac_field(*c_gens)
 
     def as_numer_denom(self):
         """
         Return QuasiPolynomial with coefficient numerators as well as their common denominator
         """
-        c_denoms = [c.numer for c in self.coefficients()]
-        if not c_denoms:
+        if not self.coefficients():
             return sp.Integer(0), sp.Integer(1)
-        denom = reduce(c_denoms[0].ring.domain.lcm, c_denoms)
-        nd = {exp: cff * denom for exp, cff in self.items()}
-        numer = QuasiPolynomialElement.from_dict(nd, *self.gens)
+        c_nums, c_dens = zip(*[(c.numer, c.denom) for c in self.coefficients()])
+        denom = reduce(c_dens[0].ring.domain.lcm, c_dens)
+        nd = {exp: cff * denom for exp, cff in self.iterterms()}
+        numer = QuasiPolynomialElement.from_dict(nd, self.ring)
         return numer, denom
 
     @staticmethod
@@ -716,16 +717,18 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
         """Iterator over terms of a quasipolynomial. """
         return iter(self.items())
 
-    # def get_coeff_denom_lcm(self) -> sp.Expr:
-    #     """
-    #     Compute the least common multiple of all coefficient denominators
-    #     """
-    #     coeffs = self.coefficients()
-    #     lcm = 1
-    #     for c in coeffs:
-    #         nc, dc = c.as_numer_denom()
-    #         lcm = sp.lcm(lcm, dc)
-    #     return lcm
+    def diff(f, x):
+        """Compute partial derivative w.r.t. ``x``.
+
+        This will take into account that we have q_gen = exp(c_gen)
+
+        """
+        gd = {}
+        for expv, coeff in f.iterterms():
+            idx = coeff.field.symbols.index(x)
+            c_dx = coeff.diff(coeff.field.gens[idx])
+            gd[expv] = c_dx + coeff * expv
+        return f.ring(gd)
 
 
 class QuasiPolynomialRing(Ring):
