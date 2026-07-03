@@ -57,45 +57,7 @@ def generate_integer_transform(dim: int, max_entry: int = 4) -> np.ndarray:
     return T, Tinv
 
 
-def get_coeffs(expr: sp.Expr, gen: sp.Symbol) -> dict:
-    """
-    Helper function to return the coefficients of different powers
-    of *gen* in *expr*.
-    """
-    s = QPoly(expr, gen)
-    c = s.as_dict()
-    return c
 
-
-def get_matrix_coeffs(
-    mat: sp.Matrix, gen: sp.Symbol, exponents_only=False
-) -> list[list[dict]]:
-    coeffs = []
-    for j in range(mat.rows):
-        r = []
-        for i in range(mat.cols):
-            c = get_coeffs(mat[j, i], gen)
-            if exponents_only:
-                r.append(c.keys())
-            else:
-                r.append(c)
-        coeffs.append(r)
-    return coeffs
-
-
-def show_coeffs(expr: sp.Expr, gen: sp.Symbol):
-    c = get_coeffs(expr, gen)
-    for k, v in c.items():
-        print(k, v)
-
-
-def show_mat_coeffs(mat: sp.Matrix, gen: sp.Symbol):
-    mc = get_matrix_coeffs(mat, gen)
-    for i, row in enumerate(mc):
-        for j, c in enumerate(row):
-            print(f"Element: {j, i}")
-            for k, v in c.items():
-                print(k, v)
 
 
 def get_leading_term_matrix(mat, sym, subs=None):

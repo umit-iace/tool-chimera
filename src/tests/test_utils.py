@@ -3,13 +3,13 @@ import random as rd
 import pytest
 import numpy as np
 import sympy as sp
+from sympy.polys.matrices import DomainMatrix
 
-from chimera import QPoly
+from chimera import QuasiPolynomialElement, QuasiPolynomialRing
 from chimera.utils import (
     check_prediction_condition,
     check_delay_condition,
     generate_integer_transform,
-    get_coeffs,
     get_term,
     get_leading_column_degrees,
     get_leading_term_matrix,
@@ -19,72 +19,6 @@ from chimera.utils import (
     factor_diag_post,
 )
 from chimera.poly import column_reduced_form
-
-
-def test_get_coeff():
-    a, b, s = sp.symbols("a b s")
-    sigma = sp.symbols("sigma", positive=True)
-
-    sig_dict = {a: 4 * s + 2, b: 3 * s, -2 * a: 5 * s**2, b + b: 3 * s}
-    f = QPoly.from_dict(sig_dict, sigma).as_expr()
-    c = get_coeffs(f, sigma)
-    assert sig_dict == c
-
-    f = sigma ** (a) + 5 * s * sigma ** (-a)
-    assert get_coeffs(f, sigma) == {a: 1, -a: 5 * s}
-
-    f = (1 / sigma) ** (a) + 5 * s * (1 / sigma) ** (-a)
-    assert get_coeffs(f, sigma) == {-a: 1, a: 5 * s}
-
-    f = (sigma) ** (-b) * a * (1 / sigma) ** (-a)
-    assert get_coeffs(f, sigma) == {a - b: a}
-
-    f = sp.exp(s * a) + 2 * sp.exp(s * -a)
-    assert get_coeffs(f, sp.exp(s)) == {a: 1, -a: 2}
-
-    c1, c2, c3, d1, d2, d3, tau_a, tau_b = sp.symbols(
-        "c1, c2, c3, d1 d2 d3 tau_a tau_b"
-    )
-    f = (
-        -d1
-        * (-c1 * s / tau_a - c2 * s + s**2 / tau_a)
-        * sp.exp(s) ** tau_a
-        / (
-            tau_b
-            * (
-                c1 * d2 * s / tau_a
-                - c1 * s**2 / (tau_a * tau_b)
-                + c2 * d2 * s
-                - c2 * s**2 / tau_b
-                - d2 * s**2 / tau_a
-                + s**3 / (tau_a * tau_b)
-            )
-            * sp.exp(s) ** tau_b
-        )
-    )
-    cffs = get_coeffs(f, sp.exp(s))
-    assert [*cffs.keys()] == [tau_a - tau_b]
-
-    f = (
-        d1
-        * s
-        * (
-            -(sigma**tau_b)
-            * (sigma**tau_a - sigma**tau_b * sp.exp(d2 * tau_b) ** (tau_a - tau_b))
-            * (
-                sigma ** (2 * tau_b) * (d2 * tau_b + s) * (d3 * tau_b - 1)
-                - (d2 * tau_b - s) * (d3 * tau_b + 1)
-            )
-            - sigma ** (tau_a + tau_b)
-            * (d2 * tau_b - s)
-            * (d3 * tau_b + sigma ** (2 * tau_b) * (d3 * tau_b - 1) + 1)
-        )
-    )
-    cffs = get_coeffs(f, sigma)
-    assert set(cffs.keys()) == set([2 * tau_b, 4 * tau_b, tau_a + 3 * tau_b])
-
-    f = 1 / (2 * c2 * c3 * sigma - 2 * c2 * sigma)
-    cffs = get_coeffs(f, sigma)
 
 
 def _build_poly(p_gen, p_order, c_max):
@@ -134,8 +68,7 @@ def _build_qpoly(c_gen, q_gen, c_order, cc_max):
     tdq = min([e for e in qd.keys()])
     tcq = qd[tdq]
 
-    qp = QPoly.from_dict(qd, q_gen)
-    return qp, ((lcc, ldc), (tcc, tdc)), ((lcq, ldq), (tcq, tdq))
+    return qd, ((lcc, ldc), (tcc, tdc)), ((lcq, ldq), (tcq, tdq))
 
 
 def test_get_term_poly():
@@ -183,31 +116,31 @@ def test_get_term_qpoly():
         qp, ((lcc, ldc), (tcc, tdc)), ((lcq, ldq), (tcq, tdq)) = c
         print("-" * 50)
         print("(")
-        print(f"{c[0].as_expr()},")
+        print(f"{c[0]},")
         print(f"{c[1]},")
         print(f"{c[2]},")
         print(")")
         print("-" * 50)
 
-        # test as expression and in object form
-        if isinstance(qp, QPoly):
-            tests = [qp.as_expr(), qp]
-        else:
-            tests = [qp, QPoly(qp, sigma)]
+        coeff_dom = sp.EX.frac_field(s)
+        qp_ring = QuasiPolynomialRing(coeff_dom, sigma)
+        qp = qp_ring(qp)
+        tests = [qp.as_expr(), qp]
+
         for _qp in tests:
             # exponents
             (_lc, _ld), (_tc, _td) = get_term(_qp, sigma)
             assert ldq == _ld
             assert tdq == _td
-            assert (lcq - _lc).simplify() == 0
-            assert (tcq - _tc).simplify() == 0
+            assert (lcq - _lc.as_expr()).simplify() == 0
+            assert (tcq - _tc.as_expr()).simplify() == 0
 
             # coefficients
             (_lc, _ld), (_tc, _td) = get_term(_qp, s)
             assert ldc == _ld
             assert tdc == _td
-            assert (lcc - _lc).simplify() == 0
-            assert (tcc - _tc).simplify() == 0
+            assert (lcc - _lc.as_expr()).simplify() == 0
+            assert (tcc - _tc.as_expr()).simplify() == 0
 
 
 def test_get_lccm():
@@ -243,6 +176,10 @@ def test_get_leading_terms():
             ],
         ]
     )
+    coeff_dom = sp.EX.frac_field(s)
+    qp_ring = QuasiPolynomialRing(coeff_dom, sigma)
+    m = DomainMatrix.from_list(m.tolist(), domain=qp_ring)
+
     ans = sp.Matrix([[2, 1], [-sp.Rational(1, 2), 1]])
     assert get_leading_term_matrix(m, sigma)[0] == ans
 
