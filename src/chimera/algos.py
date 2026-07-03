@@ -5,10 +5,8 @@ Custom algorithms for the project
 import logging
 from typing import Any, Tuple, Union
 
-import numpy as np
 import sympy as sp
 from sympy import Basic, Expr, Float, Integer, Rational, Symbol
-from sympy.core.numbers import ComplexInfinity, Infinity, NaN, NegativeInfinity, Zero
 from sympy.polys.matrices import DomainMatrix
 from sympy.polys.matrices.domainscalar import DomainScalar
 
@@ -493,6 +491,13 @@ def make_entire(
     """
     if expr.is_zero:
         return expr, sp.S.Zero
+    if gen_expr is None:
+        gen_expr = sp.exp(rat_sym)
+    if rat_sym not in gen_expr.free_symbols:
+        raise ValueError(
+            "The expression to substitute for the GenPoly generator must "
+            "contain the free variable of the rational coefficients."
+        )
 
     # extract the common denominator
     num, den = expr.as_numer_denom()
@@ -504,7 +509,26 @@ def make_entire(
 
     # start without denominator and iteratively add zeroes
     eq = QPoly(num / lc, *expr.gens)
-    ee, p = _entire_term(eq, rat_sym, rts, gen_expr)
+    for r, m in rts.items():
+        logger.debug(f"Lifting root at {rat_sym}={r} with multiplicity {m}")
+
+        # compute derivatives
+        eq_k_ds = [eq.as_expr()]
+        for i in range(1, m):
+            eq_k_ds.append(eq_k_ds[-1].diff(rat_sym))
+
+        # compute the limit at s = r
+        eq_at_r = sp.Add(
+            *[
+                eq_k_ds[i].subs(rat_sym, r) * (rat_sym - r) ** i / sp.factorial(i)
+                for i in range(m)
+            ]
+        )
+        # include multiple roots in one step
+        eq = (eq - eq_at_r) / (rat_sym - r) ** m
+
+    # add offset term to original expression
+    p = eq.as_dict().get(0, sp.S.Zero)
     return expr + p, p
 
 
@@ -565,7 +589,6 @@ def _entire_term(
         logger.debug(f"Lifting root at {rat_sym}={r} with multiplicity {m}")
 
         # compute derivatives
-        # qe_k_ds = [qe.as_expr().subs(q.gen, gen_expr)]
         qe_k_ds = [qe]
         for i in range(1, m):
             qe_k_ds.append(qe_k_ds[-1].diff(rat_sym))
@@ -727,7 +750,6 @@ def reduce_matrix_shifts(
         #     mq = mat.applyfunc(lambda x: QPoly(x, q_gen))
         l_mat = get_column_reduction_transform(mat, None, p_gen, q_gen)
 
-        # convert to numpy array to circumvent domain matrix problems
         red_mat = mat.copy()
         red_mat = l_mat * red_mat
 
@@ -776,7 +798,7 @@ def sort_shift_intervals(
 
 
 def move_col_degrees_on_diagonal(
-    mat: sp.Matrix,
+    mat: DomainMatrix,
     p_gen: sp.Symbol,
     q_gen: sp.Symbol,
 ) -> Tuple[sp.Matrix, sp.Matrix]:

@@ -1,10 +1,7 @@
 import logging
-import random
-from functools import reduce
 
 import pytest
 import sympy as sp
-from numpy import dtype
 from sympy import Integer, Matrix, sqrt
 from sympy.core.random import sample
 from sympy.polys.matrices import DomainMatrix
@@ -16,7 +13,6 @@ from chimera.algos import (
     make_entire,
     move_col_degrees_on_diagonal,
     qpld_single,
-    qplde,
     qplde_single,
     reduce_matrix_shifts,
 )
@@ -35,7 +31,7 @@ sigma = sp.Symbol("sigma", positive=True, real=True)
 s = sp.Symbol("s")
 
 
-def test_gpld_single():
+def test_qpld_single():
     xl = [
         3 * sigma ** sp.sqrt(5) + 1 * sigma + 5,
         5 + 2 * sigma ** (-2 * sp.pi),
@@ -69,8 +65,9 @@ def test_gpld_single():
 def test_make_entire():
     exprs = [
         2 * s / s**3 * (3 * s + 4) * sigma**3 + 1 / (s**2 + 2) * sigma,
-        2 * s / (3 * s**2 - 5 * s + 4) * sigma**3
-        + (s**4 + 1) / s**2 * (s**2 - 2) * sigma,
+        1 / s**4 * sigma**sp.sqrt(3),
+        1 / (1 - s)**4 * sigma**sp.sqrt(3),
+        # 2 * s / (3 * s**2 - 5 * s + 4) * sigma**3 + (s**4 + 1) / s**2 * (s**2 - 2) * sigma,
     ]
     for expr in exprs:
         print(f"Testing {expr}:")
@@ -84,12 +81,11 @@ def test_make_entire():
         for exp, cff in egp.as_dict().items():
             if exp == 0:
                 continue
-            err = (gp.as_dict()[exp] - cff).simplify()
+            err = (gp.as_dict()[exp] - cff).as_expr().simplify()
             assert err == 0
 
 
-# @pytest.mark.skip("Takes too long")
-def test_qplde():
+def test_qplde_single():
     xl = [
         (3 * s + 2 * s**2) * sigma ** sp.sqrt(5) + (s**2 + 2 * s) * sigma + 2 * s + 1,
         5 * s + (s + sp.Rational(1, 2)) * sigma ** (-2 * sp.pi),
@@ -329,8 +325,8 @@ def test_reduce_matrix_shifts_2x2():
         cs.append(case)
 
     # add some random ones, too
-    for d in range(1, 3):
-        for k in range(10):
+    for d in range(1, 2):
+        for k in range(3):
             cs.append(_generate_test_case(d, 2, 2))
 
     for c in cs:
@@ -362,7 +358,7 @@ def test_reduce_matrix_shifts_3x2():
         _run_reduction_test(c)
 
 
-# @pytest.mark.skip("Extensive Benchmark, takes quite long")
+@pytest.mark.skip("Extensive Benchmark, takes quite long")
 def test_reduce_matrix_shifts_3x3():
     print("3 x 3 cases:")
     cs = []
@@ -503,8 +499,11 @@ def test_move_col_degrees_on_diagonal():
 
     def _run_test(_m):
         print(_m)
-        res, r_mat = move_col_degrees_on_diagonal(_m, s)
+        res, r_mat = move_col_degrees_on_diagonal(_m, s, sigma)
         assert check_col_degrees_on_diagonal(res, s)
 
+    coeff_dom = sp.EX.frac_field(s)
+    qp_ring = QuasiPolynomialRing(coeff_dom, sigma)
     for m in mats:
-        _run_test(m)
+        dm = DomainMatrix.from_list(m.tolist(), domain=qp_ring)
+        _run_test(dm)

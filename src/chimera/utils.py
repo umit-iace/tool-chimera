@@ -493,7 +493,8 @@ def check_singularities(
     if not isinstance(expr, QPoly):
         expr = QPoly(expr, gp_sym)
     num, den = expr.as_numer_denom()
-    poles = sp.roots(den, rat_sym)
+    p_den = sp.Poly(den.as_expr(), rat_sym)
+    poles = sp.roots(p_den, rat_sym)
     for p, m in poles.items():
         if verbose:
             print(f"Testing pole at s={p}:")
