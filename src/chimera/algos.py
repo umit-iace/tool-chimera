@@ -27,6 +27,7 @@ __all__ = [
     "qpld_single",
     "qplde_single",
     "eliminate_delays",
+    "canonical_form",
     "reduce_matrix_shifts",
 ]
 
@@ -705,11 +706,6 @@ def get_column_reduction_transform(mat, col, p_gen, q_gen=None):
             l_mat[i, col] = -qe.as_expr()
     else:
         l_mat = DomainMatrix.eye(mat.shape[0], domain=mat.domain)
-        # reduce multiple columns at once
-        # if not isinstance(mat[0,0], QuasiPolynomialElement):
-        #     mq = mat.applyfunc(lambda x: QPoly(x, q_gen))
-        # else:
-        #     mq = mat.copy()
         for i in range(1, mat.shape[0]):
             qe, _ = qplde(mat, i, p_gen)
             for j in range(i):
@@ -718,9 +714,10 @@ def get_column_reduction_transform(mat, col, p_gen, q_gen=None):
 
 
 def reduce_matrix_shifts(
-    mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol
+    mat: sp.Matrix, p_gen: sp.Symbol, q_gen: sp.Symbol, check_cform=True,
 ) -> Tuple[sp.Matrix, sp.Matrix]:
-    check_canonical_form(mat, p_gen, q_gen)
+    if check_cform:
+        check_canonical_form(mat, p_gen, q_gen)
 
     if 0:
         red_mat = mat.copy()

@@ -764,7 +764,7 @@ class QuasiPolynomialRing(Ring):
 
     @property
     def one(self):
-        return self.dtype(self, {0: 1})
+        return self.dtype(self, {0: self.domain.one})
 
     def characteristic(self):
         return self.domain.characteristic()

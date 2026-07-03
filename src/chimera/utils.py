@@ -57,9 +57,6 @@ def generate_integer_transform(dim: int, max_entry: int = 4) -> np.ndarray:
     return T, Tinv
 
 
-
-
-
 def get_leading_term_matrix(mat, sym, subs=None):
     (lc, ld), _ = get_matrix_terms(mat, sym, subs)
     return lc, ld
@@ -122,7 +119,7 @@ def domain_matrix_from_flat_list(elements, shape):
     else:
         # construct nested list
         rows, cols = shape
-        elems_nested = [elements[i * cols : (i + 1) * cols] for i in range(rows)]
+        elems_nested = [elements[i * cols: (i + 1) * cols] for i in range(rows)]
         dm = DomainMatrix.from_list_sympy(rows, cols, elems_nested, extension=True)
 
     m = dm.to_Matrix()
@@ -133,7 +130,7 @@ def domain_matrix_from_flat_list(elements, shape):
 
 
 def get_leading_column_degrees(
-    mat: sp.Matrix, sym: sp.Symbol, subs: dict = None
+        mat: sp.Matrix, sym: sp.Symbol, subs: dict = None
 ) -> list:
     """
     Extract the highest degrees of each column
@@ -144,7 +141,7 @@ def get_leading_column_degrees(
 
 
 def _leading_col_degs(degs: DomainMatrix | Matrix) -> list[DomainElement | sp.Expr]:
-   return _col_degs(degs, max)
+    return _col_degs(degs, max)
 
 
 def _trailing_col_degs(degs: DomainMatrix | Matrix) -> list[DomainElement | sp.Expr]:
@@ -171,7 +168,7 @@ def _col_degs(degs: DomainMatrix | Matrix, cmp: Callable) -> list[DomainElement 
 
 
 def get_trailing_column_degrees(
-    mat: sp.Matrix, sym: sp.Symbol, subs: dict = None
+        mat: sp.Matrix, sym: sp.Symbol, subs: dict = None
 ) -> list:
     """
     Extract the smallest degrees of each column
@@ -201,7 +198,7 @@ def get_row_degrees(mat: sp.Matrix, sym: sp.Symbol) -> list:
 
 
 def get_term(
-    e: sp.Expr, sym: sp.Symbol
+        e: sp.Expr, sym: sp.Symbol
 ) -> tuple[tuple[sp.Expr, sp.Expr], tuple[sp.Expr, sp.Expr]]:
     """
     Extract the leading coefficient of some expression
@@ -267,7 +264,7 @@ def get_term(
         lc = _p.LC()
         ld = _p.degree()
         td = sp.Poly(_p.EM().as_expr(), _p.gen).degree()
-        tc = _p.coeff_monomial(_p.gen**td)
+        tc = _p.coeff_monomial(_p.gen ** td)
         return (lc, ld), (tc, td)
 
     def _handle_qpoly_coefficients(_p, sym):
@@ -434,9 +431,9 @@ def check_delay_condition(mat, delay_sym, diff_sym):
 
 def check_all_conds(mat, pred_sym, delay_sym, diff_sym):
     return (
-        check_derivative_condition(mat, diff_sym)
-        and check_prediction_condition(mat, pred_sym, diff_sym)
-        and check_delay_condition(mat, delay_sym, diff_sym)
+            check_derivative_condition(mat, diff_sym)
+            and check_prediction_condition(mat, pred_sym, diff_sym)
+            and check_delay_condition(mat, delay_sym, diff_sym)
     )
 
 
@@ -471,11 +468,11 @@ def check_equal(expr1, expr2, n=10, positive=False, strictly_positive=False):
 
 
 def check_singularities(
-    expr: sp.Expr,
-    rat_sym: sp.Symbol,
-    gp_sym: sp.Symbol,
-    gp_expr: sp.Expr,
-    verbose: bool = False,
+        expr: sp.Expr,
+        rat_sym: sp.Symbol,
+        gp_sym: sp.Symbol,
+        gp_expr: sp.Expr,
+        verbose: bool = False,
 ):
     """
     Check if denominator zeroes are numerator zeroes as well
@@ -702,7 +699,7 @@ def _substitute_non_state_lumped_term(expr, var, order, lower, upper):
 
 
 def _substitute_lower_derivative_lumped_delay(
-    var, shift_degree, der_order, max_der_order, bounds
+        var, shift_degree, der_order, max_der_order, bounds
 ):
     time_sym = var.args[0]
     theta, sigma = sp.symbols("theta sigma")
@@ -717,9 +714,9 @@ def _substitute_lower_derivative_lumped_delay(
         s1 = (tau + tau_lo) ** (k - i) / sp.factorial(k - i) * der
 
         int_kernel = (
-            (tau - sigma) ** (n - i - 1)
-            / sp.factorial(n - i - 1)
-            * var.subs(time_sym, theta).diff(theta, n).subs(theta, time_sym + sigma)
+                (tau - sigma) ** (n - i - 1)
+                / sp.factorial(n - i - 1)
+                * var.subs(time_sym, theta).diff(theta, n).subs(theta, time_sym + sigma)
         )
 
         s2 = sp.Integral(int_kernel, (sigma, -tau_lo, tau_hi))
@@ -760,7 +757,7 @@ def _substitute_non_state_distributed_term(expr, var, order):
 
 
 def _substitute_lower_derivative_distributed_delay(
-    var, der_order, max_der_order, kernel, bounds
+        var, der_order, max_der_order, kernel, bounds
 ):
     theta, sigma = sp.symbols("theta sigma")
     time_sym = var.args[0]
@@ -774,19 +771,19 @@ def _substitute_lower_derivative_distributed_delay(
         int1 = (tau_hi - tau) ** (k - i) * kernel
         i1 = sp.Integral(int1, (tau, tau_lo, tau_hi))
         i1 *= (
-            (-1)
-            * +(k - i)
-            / sp.factorial(k - i)
-            * var.subs(time_sym, theta).diff(theta, k).subs(theta, time_sym + tau_hi)
+                (-1)
+                * +(k - i)
+                / sp.factorial(k - i)
+                * var.subs(time_sym, theta).diff(theta, k).subs(theta, time_sym + tau_hi)
         )
 
         int2 = (tau - sigma) ** (n - i - 1) * kernel.subs(tau, sigma)
         i2 = sp.Integral(int2, (sigma, tau_lo, tau))
         int3 = (
-            i2
-            * (-1) ** (n - 1)
-            / sp.factorial(n - i - 1)
-            * var.subs(time_sym, theta).diff(theta, n).subs(theta, time_sym + tau)
+                i2
+                * (-1) ** (n - 1)
+                / sp.factorial(n - i - 1)
+                * var.subs(time_sym, theta).diff(theta, n).subs(theta, time_sym + tau)
         )
         i3 = sp.Integral(int3, (tau, tau_lo, tau_hi))
         res += i1 + i3
@@ -795,38 +792,44 @@ def _substitute_lower_derivative_distributed_delay(
     return res
 
 
-def inverse_laplace_transform(expr, diff_sym, shift_sym, ana_sym):
+def inverse_laplace_transform(expr: QuasiPolynomialElement, diff_sym, shift_sym, ana_sym):
     """
     Helper function to help sympy compute the inverse laplace transform
     """
-    # extract the normalised common polynomial denominator
-    nrs, drs = expr.together(shift_sym).as_numer_denom()
-    drs_qp = QPoly(drs, shift_sym)
-    assert len(drs_qp.exponents()) == 1
-    d_lc = shift_sym ** drs_qp.degmax() * sp.Poly(drs_qp.LC(), diff_sym).LC()
-    nn = (nrs / d_lc).simplify()
-    dn = (drs / d_lc).simplify()
+    if not isinstance(expr, QuasiPolynomialElement):
+        raise DeprecationWarning("This is no longer supported")
+        # extract the normalised common polynomial denominator
+        nrs, drs = expr.together(shift_sym).as_numer_denom()
+        drs_qp = QPoly(drs, shift_sym)
+        assert len(drs_qp.exponents()) == 1
+        d_lc = shift_sym ** drs_qp.degmax() * sp.Poly(drs_qp.LC(), diff_sym).LC()
+        nn = (nrs / d_lc).simplify()
+        dn = (drs / d_lc).simplify()
 
-    # verify
-    err = (nn / dn - expr).simplify()
-    assert err == 0
+        # verify
+        err = (nn / dn - expr).simplify()
+        assert err == 0
 
-    # collect the shifts
-    nn_qp = QPoly(nn, shift_sym)
+        # collect the shifts
+        nn_qp = QPoly(nn, shift_sym)
+    else:
+        # extract the normalised common polynomial denominator
+        nn_qp, dn_p = expr.as_numer_denom()
+        dn = dn_p.as_expr()
 
     # perform partial fraction decomposition of the common poles
     d_pfd = (1 / dn).apart()
 
     res = 0
     for term in sp.Add.make_args(d_pfd):
-        for exp, coeff in nn_qp.as_dict().items():
+        for exp, coeff in nn_qp.to_dict().items():
             """
             Sadly, sympy's inverse laplace transform  does not know how the handle 
             shifts, so instead of doing:
                 s_expr = term * coeff * sp.exp(s * exp)
             we add the manually.
             """
-            s_expr = term * coeff
+            s_expr = term * coeff.as_expr()
             t_expr = sp.inverse_laplace_transform(s_expr, diff_sym, ana_sym).subs(
                 ana_sym, ana_sym + exp
             )
@@ -941,3 +944,19 @@ def random_partition_m_parts(n, m):
     part[:] = [p - 1 for p in part]
 
     return part
+
+
+def show_matrix_degrees(m: DomainMatrix):
+    sp.pprint(
+        sp.Matrix(
+            m.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())).to_list()
+        ),
+        wrap_line=False,
+    )
+
+
+def show_matrix_degree(m: DomainMatrix):
+    sp.pprint(
+        sp.Matrix(m.applyfunc(lambda x: x.degree().as_expr().evalf()).to_list()),
+        wrap_line=False,
+    )

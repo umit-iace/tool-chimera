@@ -21,6 +21,8 @@ from chimera.utils import (
     check_singularities,
     get_lccm,
     get_matrix_terms,
+    show_matrix_degrees,
+    show_matrix_degree,
 )
 
 # debugging
@@ -65,8 +67,8 @@ def test_qpld_single():
 def test_make_entire():
     exprs = [
         2 * s / s**3 * (3 * s + 4) * sigma**3 + 1 / (s**2 + 2) * sigma,
-        1 / s**4 * sigma**sp.sqrt(3),
-        1 / (1 - s)**4 * sigma**sp.sqrt(3),
+        1 / s**4 * sigma ** sp.sqrt(3),
+        1 / (1 - s) ** 4 * sigma ** sp.sqrt(3),
         # 2 * s / (3 * s**2 - 5 * s + 4) * sigma**3 + (s**4 + 1) / s**2 * (s**2 - 2) * sigma,
     ]
     for expr in exprs:
@@ -190,8 +192,8 @@ def _run_reduction_test(case):
     coeff_dom = sp.EX.frac_field(s)
     qp_ring = QuasiPolynomialRing(coeff_dom, sigma)
     m = DomainMatrix.from_list(m.tolist(), domain=qp_ring)
-    _show_deg(m)
-    _show_degs(m)
+    show_matrix_degree(m)
+    show_matrix_degrees(m)
 
     (_, l_cd), (_, t_cd) = get_matrix_terms(m, sigma)
     cds = l_cd - t_cd
@@ -211,20 +213,21 @@ def _run_reduction_test(case):
     q1b = L.inv() * P * q1_mat
     sp.pprint(q1b.to_Matrix())
     m = L.inv() * P * m
-    _show_deg(m)
-    _show_degs(m)
+    show_matrix_degree(m)
+    show_matrix_degrees(m)
 
     l, m, r = canonical_form(m, s, sigma)
     print("In canonical form:")
-    _show_deg(m)
-    _show_degs(m)
+    show_matrix_degree(m)
+    show_matrix_degrees(m)
 
     # the actual function call
     mrg, lg = reduce_matrix_shifts(m, s, sigma)
+    sp.pprint(lg.to_Matrix())
 
     print("Reduction results:")
-    _show_deg(mrg)
-    _show_degs(mrg)
+    show_matrix_degree(mrg)
+    show_matrix_degrees(mrg)
 
     print("Checking results:")
     # 1) all elements should have same degrees in each column
@@ -246,22 +249,6 @@ def _run_reduction_test(case):
     lcmes = get_lccm(lcme, s)
     assert lcmes == lcmse
     assert lcmes.rank() == m.shape[0]
-
-
-def _show_degs(m: DomainMatrix):
-    sp.pprint(
-        sp.Matrix(
-            m.applyfunc(lambda x: (x.degmin().evalf(), x.degmax().evalf())).to_list()
-        ),
-        wrap_line=False,
-    )
-
-
-def _show_deg(m: DomainMatrix):
-    sp.pprint(
-        sp.Matrix(m.applyfunc(lambda x: x.degree().as_expr().evalf()).to_list()),
-        wrap_line=False,
-    )
 
 
 def test_reduce_matrix_shifts_2x2():
@@ -464,7 +451,7 @@ def test_reduce_matrix_shifts_4x4():
         )
         cs.append(case)
 
-    for k in range(1,10):
+    for k in range(1, 10):
         cs.append(_generate_test_case(k, 4, 4))
 
     for c in cs:
