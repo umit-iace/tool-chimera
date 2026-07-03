@@ -1,0 +1,28 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: iace-chimera
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - {}
+  - given-names: Stefan
+    family-names: Ecklebe
+    email: stefan.ecklebe@umit-tirol.at
+    affiliation: UMIT TIROL
+    orcid: 'https://orcid.org/0000-0002-4911-1233'
+repository-code: 'https://github.com/umit-iace/tool-chimera'
+abstract: >-
+  This toolbox contains routines for computations on MIMO
+  hyperbolic PDE-ODE-Systems.
+keywords:
+  - control theory
+  - hyperbolic partial differential equations
+  - controller form
+license: GPL-3.0
+commit: f276b86b6a56325a4534c44d1e26e80ee2a51c42
+version: 0.2.0
+date-released: '2026-07-03'
