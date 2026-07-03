@@ -8,7 +8,6 @@ message: >-
   metadata from this file.
 type: software
 authors:
-  - {}
   - given-names: Stefan
     family-names: Ecklebe
     email: stefan.ecklebe@umit-tirol.at
