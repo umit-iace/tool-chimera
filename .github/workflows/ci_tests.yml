@@ -33,4 +33,4 @@ jobs:
 
     - name: Test with pytest
       run: |
-        uv run python -m pytest --cov=iace-chimera src/tests
+        uv run python -m pytest --cov=chimera src/tests

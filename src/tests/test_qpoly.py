@@ -59,9 +59,9 @@ def case_3():
 def case_4():
     # compound exponents
     f = (
-        sp.Poly(s**2 + 2 * s + 1, s) * sigma ** (a + b) + sp.Poly(s**3, s) * sigma**-b
+        (s**2 + 2 * s + 1) * sigma ** (a + b) + (s**3) * sigma**-b
     ) * sigma**a
-    g = sp.Poly(s**2 + 2 * s + 1, s) * sigma**-a + sp.Poly(s**3, s) * sigma**b
+    g = (s**2 + 2 * s + 1) * sigma**-a + (s**3) * sigma**b
     print("Case 4:")
     print(f"f: {f}")
     print(f"g: {g}")
@@ -71,12 +71,12 @@ def case_4():
 def case_5():
     # rational coefficients and real exponents
     f = (
-        sp.Poly(s**2 + 2 * s + 1, s) / sp.Poly(s**3 - s, s) * sigma ** (a + b)
-        + sp.Poly(s**3, s) * sigma**-b
+        (s**2 + 2 * s + 1) / (s**3 - s) * sigma ** (a + b)
+        + (s**3) * sigma**-b
     ) * sigma**a
     g = (
-        sp.Poly(s**2 + 2 * s + 1, s) * sigma**-a
-        + sp.Poly(s**3 + 1 * s, s) / sp.Poly(s**2 + 2, s) * sigma**b
+        (s**2 + 2 * s + 1) * sigma**-a
+        + (s**3 + 1 * s) / (s**2 + 2) * sigma**b
     )
     print("Case 5:")
     print(f"f: {f}")
