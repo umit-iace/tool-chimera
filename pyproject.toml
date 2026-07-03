@@ -1,6 +1,6 @@
 [project]
 name = "iace-chimera"
-version = "0.1.0"
+version = "0.2.0"
 authors = [
   { name="Stefan Ecklebe", email="stefan.ecklebe@umit-tirol.at" },
 ]
