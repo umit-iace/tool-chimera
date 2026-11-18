@@ -135,7 +135,7 @@ def echelon_form(A, x, domain=None, mode: str = "pre"):
     M = A.copy()
     n, m = M.shape
     if domain is None:
-        if M.free_symbols:
+        if M.free_symbols - {x}:
             domain = EX
         else:
             domain = QQ
@@ -147,10 +147,9 @@ def echelon_form(A, x, domain=None, mode: str = "pre"):
     else:
         P = DomainMatrix.from_list(M.tolist(), domain=R).to_sparse()
 
-    # Store transformation steps
-    U = DomainMatrix.eye(n, R)
-
     if mode == "pre":
+        U = DomainMatrix.eye(n, R)
+
         # Eliminate row entries by pre-multiplication (row operations)
         r = 0
         for c in range(m):
@@ -158,21 +157,10 @@ def echelon_form(A, x, domain=None, mode: str = "pre"):
                 P, U = row_gcd(P, U, r, i, c)
             if not P[r, c].is_zero():
                 r += 1
-        if 0:
-            # satisfy requirement (r2), TBD
-            r = 1
-            for k in range(m):
-                pivot = P[r, k].element
-                if not pivot.is_zero:
-                    # Make pivots monic
-                    scale = 1 / pivot.LC
-                    P, U = row_scale_constant(P, U, r, scale)
-                    # Scale row with pivot
-                    for i in range(r - 1):
-                        q = R.quo(P[i, k], P[r, k]).element
-                        P, U = row_add(P, U, r, i, -q)
-                    r += 1
+
     elif mode == "post":
+        U = DomainMatrix.eye(m, R)
+
         # Eliminate row entries by post-multiplication (col operations)
         c = m - 1
         for r in range(n - 1, -1, -1):
@@ -216,9 +204,9 @@ def col_gcd(
 
     # 2x2 unimodular block T = [[s, u], [t, v]]
     T = DomainMatrix.eye(P.shape[1], R)
-    T[r, r] = s
-    T[r, i] = u
-    T[i, r] = t
+    T[c, c] = s
+    T[c, i] = u
+    T[i, c] = t
     T[i, i] = v
     P = P.matmul(T)
     U = U.matmul(T)
@@ -489,21 +477,21 @@ def column_reduced_form(
     return m, u
 
 
-def random_poly_mat(m, n, order, c_min, c_max, p_gen):
+def random_poly_mat(n, m, order, c_min, c_max, p_gen):
     if isinstance(order, Iterable):
-        assert len(order) == n
+        assert len(order) == m
     else:
-        order = [order] * n
+        order = [order] * m
 
-    mat = sp.Matrix.zeros(m, n)
-    for j in range(n):
+    mat = sp.Matrix.zeros(n, m)
+    for j in range(m):
         cd_max = order[j]
         # generate orders for all columns
-        cds = [rd.randint(0, cd_max) for i in range(m)]
+        cds = [rd.randint(0, cd_max) for i in range(n)]
         if cd_max not in cds:
             # guarantee that the maximum degree is present
-            cds[rd.randint(0, m - 1)] = cd_max
-        for i in range(m):
+            cds[rd.randint(0, n - 1)] = cd_max
+        for i in range(n):
             mat[i, j] = random_poly(p_gen, cds[i], c_min, c_max)
     return mat
 

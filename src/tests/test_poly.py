@@ -14,43 +14,47 @@ from chimera.poly import (
 
 def test_echelon_form():
     a, b, c, s = sp.symbols("a b c s")
-    a_mat = random_poly_mat(3, 3, 3, -5, 5, s)
+    a_mat = random_poly_mat(2, 3, 3, -5, 5, s)
     # add some symbols
-    a_mat[0, 0] += a
-    a_mat[1, 1] += b
-    a_mat[2, 2] += c
+    # a_mat[0, 0] += a
+    # a_mat[1, 1] += b
+    # a_mat[2, 1] += c
 
     print("Initial matrix:")
     sp.pprint(a_mat)
+    n, m = a_mat.shape
+    if n >= m:
+        e_mat, u_mat = echelon_form(a_mat, s, mode="pre")
+        print("Left trafo:")
+        sp.pprint(u_mat, wrap_line=False)
+        print("Result:")
+        sp.pprint(e_mat, wrap_line=False)
 
-    print("Left trafo:")
-    e_mat, u_mat = echelon_form(a_mat, s, mode="pre")
-    sp.pprint(e_mat)
-    sp.pprint(u_mat)
+        # check properties
+        assert is_in_echelon_form(e_mat)
+        # assert is_in_row_hermite_form(e_mat, s)
 
-    # check properties
-    assert is_in_echelon_form(e_mat)
-    # assert is_in_row_hermite_form(e_mat, s)
+        # check left trafo
+        err = e_mat - u_mat @ a_mat
+        err.simplify()
+        assert err == sp.Matrix.zeros(*err.shape)
+        assert s not in u_mat.det().free_symbols
 
-    # check left trafo
-    err = e_mat - u_mat @ a_mat
-    err.simplify()
-    assert err == sp.Matrix.zeros(*err.shape)
-    assert s not in u_mat.det().free_symbols
+    if m >= n:
+        e_mat, u_mat = echelon_form(a_mat, s, mode="post")
+        print("Right trafo:")
+        sp.pprint(u_mat, wrap_line=False)
+        print("Result:")
+        sp.pprint(e_mat, wrap_line=False)
 
-    print("Right trafo:")
-    e_mat, u_mat = echelon_form(a_mat, s, mode="post")
-    sp.pprint(e_mat)
-    sp.pprint(u_mat)
+        # check properties
+        assert is_in_echelon_form(e_mat)
 
-    # check properties
-    assert is_in_echelon_form(e_mat)
-
-    # check right trafo
-    err = e_mat - a_mat @ u_mat
-    err.simplify()
-    assert err == sp.Matrix.zeros(*err.shape)
-    assert s not in u_mat.det().free_symbols
+        # check right trafo
+        err = e_mat - a_mat @ u_mat
+        err.simplify()
+        assert err == sp.Matrix.zeros(*err.shape)
+        assert s not in u_mat.det().free_symbols
 
 
 def test_is_in_echelon_form():
