@@ -939,6 +939,9 @@ class QPoly(sp.Basic):
     def __rtruediv__(f, g):
         return f.mul(g ** (-1))
 
+    def __bool__(f):
+        return not f.is_zero
+
     def __str__(self):
         return str(f"QPoly({self.exponents()}, gens={self.gens})")
 
