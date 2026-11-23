@@ -490,6 +490,8 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
             return f.div_ground(g)
         assert f.ring.is_element(g)
         assert not g.is_zero
+        if g.is_one:
+            return f, f.ring.zero
         return f._qdiv(g)
 
     def rdiv(f, g):
