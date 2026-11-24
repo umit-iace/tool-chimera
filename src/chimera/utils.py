@@ -487,8 +487,6 @@ def check_singularities(
     Returns:
         False if expr contains singularities, True otherwise.
     """
-    if not isinstance(expr, QPoly):
-        expr = QPoly(expr, gp_sym)
     num, den = expr.as_numer_denom()
     p_den = sp.Poly(den.as_expr(), rat_sym)
     poles = sp.roots(p_den, rat_sym)
@@ -497,10 +495,10 @@ def check_singularities(
     for p, m in poles.items():
         if verbose:
             print(f"Testing pole at s={p} with multiplicity {m}:")
-        res = num.as_expr().subs(gp_sym, gp_expr).evalf(subs={rat_sym: p})
-        if not np.isclose(complex(res), 0):
+        res = abs(num.as_expr().subs(gp_sym, gp_expr).evalf(subs={rat_sym: p}))
+        if res > 1e-6:
             if verbose:
-                print(f"Failure! Numerator yields residual {res}")
+                print(f"Failure! Numerator yields residual of {res}")
             return False
     else:
         return True

@@ -395,7 +395,7 @@ def qplde(mat: sp.Matrix, row: int, c_gen: sp.Symbol) -> tuple[sp.Matrix, sp.Mat
                 if max_c is None or min_c is None:
                     raise ValueError(
                         "Degree order cannot be decided. Make sure that"
-                        "the given expressions exponents to not contain"
+                        "the given expressions exponents do not contain"
                         "any symbols."
                     )
             compat_max.append(all(dmax))

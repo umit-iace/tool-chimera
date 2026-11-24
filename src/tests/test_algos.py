@@ -14,6 +14,7 @@ from chimera.algos import (
     move_col_degrees_on_diagonal,
     qpld_single,
     qplde_single,
+    qplde,
     reduce_matrix_shifts,
 )
 from chimera.poly import random_col_reduced_mat
@@ -89,6 +90,7 @@ def test_make_entire():
 
 def test_qplde_single():
     xl = [
+        (-3 * s ** 2 / 94 + 17 * s / 94 + sp.Rational(70, 47)) / sigma ** (sp.log(2) / 4),
         s * sigma ** sp.sqrt(5) + 1,
         (3 * s + 2 * s**2) * sigma ** sp.sqrt(5) + (s**2 + 2 * s) * sigma + 2 * s + 1,
         5 * s + (s + sp.Rational(1, 2)) * sigma ** (-2 * sp.pi),
@@ -100,6 +102,7 @@ def test_qplde_single():
         + (2 * s + 1) * sigma ** (-2 * sp.pi),
     ]
     yl = [
+        -3 * s ** 3 + 29 * s ** 2 + 25 * s + 4,
         (s**2 - 2) * sigma ** sp.sqrt(3) + 4,
         (3 * s**4 + 2 * s**2) * sigma ** sp.sqrt(2)
         + (s**2 + 2 * s) * sigma
@@ -146,6 +149,43 @@ def test_qplde_single():
 
         print("Checking for singularities in remainder...")
         assert check_singularities(rep, s, sigma, sp.exp(s), verbose=True)
+
+
+def test_qplde():
+    # skalar case
+    x = (-3 * s ** 2 / 94 + 17 * s / 94 + sp.Rational(70, 47)) / sigma ** (sp.log(2) / 4),
+    y = -3 * s ** 3 + 29 * s ** 2 + 25 * s + 4,
+
+    if 0:
+        x = s * sigma ** sp.sqrt(5) + 1,
+        y = (s ** 2 - 2) * sigma ** sp.sqrt(3) + 4,
+
+    # convert to domain system
+    coeff_dom = sp.RR.frac_field(s)
+    qp_ring = QuasiPolynomialRing(coeff_dom, sigma)
+
+    m = DomainMatrix.from_list([[y], [x]], qp_ring)
+    qv, rv = qplde(m, row=1, c_gen=s)
+    qq = qv[0, 0]
+    rq = rv[0, 0]
+
+    pprint(qq.element.as_expr(), wrap_line=False)
+    pprint(rq.element.as_expr(), wrap_line=False)
+
+    test_r = m[1,0] - qq * m[0,0]
+    err = (test_r - rq).element.as_expr().expand()
+    # pprint(err, wrap_line=False)
+    assert err == 0
+
+    # check degrees of remainder
+    assert rq.element.degmax() <= m[0,0].element.degmax()
+    assert rq.element.degree() <= m[0,0].element.degree()
+
+    print("Checking for singularities in quotient...")
+    assert check_singularities(qq.element, s, sigma, sp.exp(s), verbose=True)
+
+    print("Checking for singularities in remainder...")
+    assert check_singularities(rq.element, s, sigma, sp.exp(s), verbose=True)
 
 
 def _generate_test_case(n, nm, np):

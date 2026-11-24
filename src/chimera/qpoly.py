@@ -391,11 +391,21 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
                 # help sympys domain system
                 fn, gn = f._unify_coeffs(fc, gc)
                 rc = fn + gn
-            rd[exp] = rc
+            rd[exp] = f._chop_coeff(rc)
         rd.update({exp: f.coeff(exp) for exp in f_only_exps})
         rd.update({exp: g.coeff(exp) for exp in g_only_exps})
 
         return QuasiPolynomialElement.from_dict(rd, f.ring)
+
+    @staticmethod
+    def _chop_coeff(cff):
+        if cff.field.domain.is_Exact:
+            return cff
+
+        tol = 10 * cff.field.domain.dtype(2) ** -53  # ~1.1e-16, or just use 1e-16
+        c_cff = cff.new(chop_poly(cff.numer, tol),
+                        chop_poly(cff.denom, tol))
+        return c_cff
 
     def neg(f):
         rd = {exp: -cff for exp, cff in f.items()}
@@ -1345,3 +1355,9 @@ def exponent_coeff_dict(expr, gen, *, strict=True, expand=True):
         return out
     else:
         return out, other
+
+
+def chop_poly(p, tol):
+    ring = p.ring
+    d = {m: c for m, c in p.terms() if abs(c) >= tol}
+    return ring.from_dict(d)
