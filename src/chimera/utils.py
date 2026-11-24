@@ -492,13 +492,16 @@ def check_singularities(
     num, den = expr.as_numer_denom()
     p_den = sp.Poly(den.as_expr(), rat_sym)
     poles = sp.roots(p_den, rat_sym)
+    if verbose:
+        print(f"{len(poles.items())} poles to check.")
     for p, m in poles.items():
         if verbose:
-            print(f"Testing pole at s={p}:")
-        for expr in num, den:
-            res = expr.as_expr().subs(gp_sym, gp_expr).evalf(subs={rat_sym: p})
-            if not np.isclose(complex(res), 0):
-                return False
+            print(f"Testing pole at s={p} with multiplicity {m}:")
+        res = num.as_expr().subs(gp_sym, gp_expr).evalf(subs={rat_sym: p})
+        if not np.isclose(complex(res), 0):
+            if verbose:
+                print(f"Failure! Numerator yields residual {res}")
+            return False
     else:
         return True
 

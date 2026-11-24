@@ -1076,11 +1076,11 @@ class QPoly(sp.Basic):
         """
         Return GenPoly with coefficient numerators as well as their common denominator
         """
-        c_denoms = [c.numer for c in self.coefficients()]
+        c_denoms = [c.denom for c in self.coefficients()]
         if not c_denoms:
             return sp.Integer(0), sp.Integer(1)
-        denom = reduce(c_denoms[0].ring.domain.lcm, c_denoms)
-        nd = {exp: cff * denom for exp, cff in self.as_dict().items()}
+        denom = reduce(c_denoms[0].ring.domain.lcm, c_denoms).as_expr()
+        nd = {exp: cff.as_expr() * denom for exp, cff in self.as_dict().items()}
         numer = QPoly.from_dict(nd, *self.gens)
         return numer, denom
 

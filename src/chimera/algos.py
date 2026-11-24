@@ -514,7 +514,7 @@ def make_entire(
         logger.debug(f"Lifting root at {rat_sym}={r} with multiplicity {m}")
 
         # compute derivatives
-        eq_k_ds = [eq.as_expr()]
+        eq_k_ds = [eq.as_expr().subs(expr.gen, gen_expr)]
         for i in range(1, m):
             eq_k_ds.append(eq_k_ds[-1].diff(rat_sym))
 
@@ -528,8 +528,8 @@ def make_entire(
         # include multiple roots in one step
         eq = (eq - eq_at_r) / (rat_sym - r) ** m
 
+    p = QPoly.from_dict({0: eq.as_dict().get(0, sp.S.Zero)}, eq.gen)
     # add offset term to original expression
-    p = eq.as_dict().get(0, sp.S.Zero)
     return expr + p, p
 
 
@@ -651,7 +651,7 @@ def qpld_single(
         Tuple (q,r) of quotient quasipolynomial and remainder.
     """
     if not isinstance(x, QPoly) or not isinstance(y, QPoly):
-        raise ValueError("Only arguments of type GenPoly supported")
+        raise ValueError("Only arguments of type QPoly supported")
     assert x.gen == y.gen
     assert y != 0
 

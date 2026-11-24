@@ -2,7 +2,7 @@ import logging
 
 import pytest
 import sympy as sp
-from sympy import Integer, Matrix, sqrt
+from sympy import Integer, Matrix, sqrt, pprint
 from sympy.core.random import sample
 from sympy.polys.matrices import DomainMatrix
 
@@ -89,6 +89,7 @@ def test_make_entire():
 
 def test_qplde_single():
     xl = [
+        s * sigma ** sp.sqrt(5) + 1,
         (3 * s + 2 * s**2) * sigma ** sp.sqrt(5) + (s**2 + 2 * s) * sigma + 2 * s + 1,
         5 * s + (s + sp.Rational(1, 2)) * sigma ** (-2 * sp.pi),
         (3 * s + 2 * s**2) * sigma ** sp.sqrt(5)
@@ -99,6 +100,7 @@ def test_qplde_single():
         + (2 * s + 1) * sigma ** (-2 * sp.pi),
     ]
     yl = [
+        (s**2 - 2) * sigma ** sp.sqrt(3) + 4,
         (3 * s**4 + 2 * s**2) * sigma ** sp.sqrt(2)
         + (s**2 + 2 * s) * sigma
         + 2 * s
@@ -112,28 +114,38 @@ def test_qplde_single():
         + (2 * s**2 + 1) * sigma ** (-sp.pi),
     ]
     for x, y in zip(xl, yl):
-        print(f"Dividing {x} by {y}:")
+        print(f"Dividing")
+        pprint(x, wrap_line=False)
+        print(f"by")
+        pprint(y, wrap_line=False)
+
         xp = QPoly(x, sigma)
         yp = QPoly(y, sigma)
         qep, rep = qplde_single(xp, yp, s)
         qe = qep.as_expr()
         re = rep.as_expr()
-        # print(f"q: {qe}")
-        # print(f"r: {re}")
+        print(f"Quotient:")
+        pprint(qe, wrap_line=False)
+        print(f"Remainder:")
+        pprint(re, wrap_line=False)
 
-        # check degrees
+        test_rep = xp - qep * yp
+        err = (test_rep - rep).as_expr().simplify()
+        assert err == 0
+
+        test_re = x - qe * y
+        err = (test_re - re).simplify()
+        assert err == 0
+
+        # check degrees of remainder
         assert rep.degmax() <= yp.degmax()
         assert rep.degree() <= yp.degree()
 
-        # check residual
-        err = x - qe * y - re
-        err = err.simplify()
-        print(f"error: {err}")
-        assert err == 0
+        print("Checking for singularities in quotient...")
+        assert check_singularities(qep, s, sigma, sp.exp(s), verbose=True)
 
-        # TODO speed this check up so that we can actually test it
-        # print("Checking for singularities in remainder:")
-        # check_singularities(rep, s, sigma, sp.exp(s), verbose=True)
+        print("Checking for singularities in remainder...")
+        assert check_singularities(rep, s, sigma, sp.exp(s), verbose=True)
 
 
 def _generate_test_case(n, nm, np):
