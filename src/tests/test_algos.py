@@ -152,16 +152,16 @@ def test_qplde_single():
 
 
 def test_qplde():
-    # skalar case
-    x = (-3 * s ** 2 / 94 + 17 * s / 94 + sp.Rational(70, 47)) / sigma ** (sp.log(2) / 4),
-    y = -3 * s ** 3 + 29 * s ** 2 + 25 * s + 4,
+    # scalar case
+    x = (-3 * s ** 2 / 94 + 17 * s / 94 + sp.Rational(70, 47)) / sigma ** (sp.log(2) / 4)
+    y = -3 * s ** 3 + 29 * s ** 2 + 25 * s + 4
 
     if 0:
         x = s * sigma ** sp.sqrt(5) + 1,
         y = (s ** 2 - 2) * sigma ** sp.sqrt(3) + 4,
 
     # convert to domain system
-    coeff_dom = sp.RR.frac_field(s)
+    coeff_dom = sp.EX.frac_field(s)
     qp_ring = QuasiPolynomialRing(coeff_dom, sigma)
 
     m = DomainMatrix.from_list([[y], [x]], qp_ring)

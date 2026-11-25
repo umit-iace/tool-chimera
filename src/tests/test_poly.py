@@ -1,5 +1,6 @@
 import pytest
 import sympy as sp
+from sympy import MutableDenseMatrix
 
 from chimera.poly import (
     row_hermite_form,
@@ -10,11 +11,20 @@ from chimera.poly import (
     is_col_reduced,
     random_poly_mat,
 )
+from chimera.utils import get_leading_column_degrees
 
 
 def test_echelon_form():
+    print()
+
     a, b, c, s = sp.symbols("a b c s")
-    a_mat = random_poly_mat(2, 3, 3, -5, 5, s)
+    if 1:
+        a_mat = random_poly_mat(3, 3, [1,2,3], -5, 5, s)
+        sp.print_python(a_mat)
+    else:
+        a_mat = MutableDenseMatrix(
+            [[-3 * s, -4 * s - 5, -4 * s ** 3 - s ** 2 - 5 * s + 4], [4 * s + 2, -s ** 2 - 3, 2 * s + 1]])
+
     # add some symbols
     # a_mat[0, 0] += a
     # a_mat[1, 1] += b
@@ -22,39 +32,39 @@ def test_echelon_form():
 
     print("Initial matrix:")
     sp.pprint(a_mat)
-    n, m = a_mat.shape
-    if n >= m:
-        e_mat, u_mat = echelon_form(a_mat, s, mode="pre")
-        print("Left trafo:")
-        sp.pprint(u_mat, wrap_line=False)
-        print("Result:")
-        sp.pprint(e_mat, wrap_line=False)
+    cdegs_a = get_leading_column_degrees(a_mat, s)
 
-        # check properties
-        assert is_in_echelon_form(e_mat)
-        # assert is_in_row_hermite_form(e_mat, s)
+    e_mat, u_mat = echelon_form(a_mat, s, mode="pre")
+    print("Left trafo:")
+    sp.pprint(u_mat, wrap_line=False)
+    print("Result:")
+    sp.pprint(e_mat, wrap_line=False)
 
-        # check left trafo
-        err = e_mat - u_mat @ a_mat
-        err.simplify()
-        assert err == sp.Matrix.zeros(*err.shape)
-        assert s not in u_mat.det().free_symbols
+    # check properties
+    assert is_in_echelon_form(e_mat)
+    # assert is_in_row_hermite_form(e_mat, s)
 
-    if m >= n:
-        e_mat, u_mat = echelon_form(a_mat, s, mode="post")
-        print("Right trafo:")
-        sp.pprint(u_mat, wrap_line=False)
-        print("Result:")
-        sp.pprint(e_mat, wrap_line=False)
+    # check left trafo
+    err = e_mat - u_mat @ a_mat
+    err.simplify()
+    assert err == sp.Matrix.zeros(*err.shape)
+    assert s not in u_mat.det().free_symbols
 
-        # check properties
-        assert is_in_echelon_form(e_mat)
+    a_mat = a_mat.T
+    e_mat, u_mat = echelon_form(a_mat, s, mode="post")
+    print("Right trafo:")
+    sp.pprint(u_mat, wrap_line=False)
+    print("Result:")
+    sp.pprint(e_mat, wrap_line=False)
 
-        # check right trafo
-        err = e_mat - a_mat @ u_mat
-        err.simplify()
-        assert err == sp.Matrix.zeros(*err.shape)
-        assert s not in u_mat.det().free_symbols
+    # check properties
+    assert is_in_echelon_form(e_mat)
+
+    # check right trafo
+    err = e_mat - a_mat @ u_mat
+    err.simplify()
+    assert err == sp.Matrix.zeros(*err.shape)
+    assert s not in u_mat.det().free_symbols
 
 
 def test_is_in_echelon_form():
