@@ -2,7 +2,7 @@ import sympy as sp
 from sympy.polys.fields import FracElement
 from sympy.polys.rings import PolyElement
 
-from chimera import QuasiPolynomialElement, QuasiPolynomialRing
+from chimera.qpoly import QuasiPolynomialElement, QuasiPolynomialRing, CachedPoly
 
 # generators
 sigma = sp.Symbol("sigma", positive=True)
@@ -200,3 +200,25 @@ def test_diff():
                 assert err.simplify() == 0
 
 
+def test_cached_poly():
+    R = sp.PolynomialRing(sp.QQ, "x")
+    x = R.symbols[0]
+    p = R(4*x**3+2*x**2+3*x+17)
+    sp.pprint(p)
+
+    cp = CachedPoly(p)
+    assert cp == p
+    assert p.factor_list() == cp.factor_list()
+
+    h = hash(cp)
+
+    # manipulating the original poly should not matter
+    p *= R(x)
+    assert h == hash(cp)
+
+    # manipulating the poly invalidates the factor list
+    cp *= R(x)
+    assert h != hash(cp)
+    assert cp._factors is None
+    # the entries should be updated on the next call
+    assert p.factor_list() == cp.factor_list()

@@ -11,9 +11,81 @@ from sympy.polys.domains.domain import DomainElement
 from sympy.polys.domains.ring import Ring
 from sympy.polys.fields import FracElement
 from sympy.polys.orderings import lex
+from sympy.polys.rings import PolyElement
 from sympy.printing.defaults import DefaultPrinting
 
 __all__ = ["QPoly", "QuasiPolynomialElement", "QuasiPolynomialRing"]
+
+
+class CachedPoly:
+    """
+    Thin wrapper around PolyElement that memorizes factor_list().
+
+    It holds checks for dunders and __getattr__ to see when the underlying
+    poly might change.
+    """
+
+    __slots__ = ('_poly', '_factors')
+
+    # Regular methods that mutate the underlying dict in place.
+    _MUTATING_METHODS = frozenset({
+        'strip_zero',      # del self[monom]          rings.py:1327
+        'imul_num',        # in-place scalar mul      used at rings.py:2324
+        '_iadd_poly_monom',# p1[ka] = ... / del p1[ka] rings.py:2480
+        # dict mutators reachable as bound methods:
+        'update', 'pop', 'popitem', 'clear', 'setdefault',
+    })
+
+    def __init__(self, poly: PolyElement):
+        self._poly = poly
+        self._factors = None
+
+    def __hash__(self):
+        return hash(self._poly)  # reuse PolyElement.__hash__
+
+    def __eq__(self, other):
+        return self._poly == (other._poly if isinstance(other, CachedPoly) else other)
+
+    def _invalidate(self):
+        self._factors = None
+        self._poly._hash = None
+
+    def factor_list(self):
+        if self._factors is None:
+            self._factors = self._poly.factor_list()  # -> ring.dmp_factor_list
+        return self._factors
+
+    def __getattr__(self, name):
+        attr = getattr(self._poly, name)
+        if name in self._MUTATING_METHODS and callable(attr):
+            def guarded(*args, **kwargs):
+                self._invalidate()
+                return attr(*args, **kwargs)
+
+            return guarded
+        return attr
+
+    def __setitem__(self, k, v):
+        self._invalidate()
+        self._poly[k] = v
+
+    def __delitem__(self, k):
+        self._invalidate()
+        del self._poly[k]
+
+    def __iadd__(self, o):
+        self._invalidate(); self._poly += o; return self
+
+    def __isub__(self, o):
+        self._invalidate(); self._poly -= o; return self
+
+    def __imul__(self, o):
+        self._invalidate(); self._poly *= o; return self
+
+    def __ipow__(self, o):
+        self._invalidate(); self._poly **= o; return self
+
+
 
 
 class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
@@ -33,33 +105,37 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
     def parent(self):
         return self.ring.to_domain()
 
-    def is_polynomial(self, sym):
+    @staticmethod
+    def is_polynomial(sym):
         return False
 
-    def is_rational_function(self, sym):
+    @staticmethod
+    def is_rational_function(sym):
         return False
 
-    _hash = None
-
-    def __hash__(self):
-        # XXX: This computes a hash of a dictionary, but currently we don't
-        # protect dictionary from being changed so any use site modifications
-        # will make hashing go wrong. Use this feature with caution until we
-        # figure out how to make a safe API without compromising speed of this
-        # low-level class.
-        _hash = self._hash
-        if _hash is None:
-            self._hash = _hash = hash((self.ring, frozenset(self.items())))
-        return _hash
-
-    def _hashable_content(self):
-        return tuple(self.items()) + self.gens
+    # _hash = None
+    #
+    # def __hash__(self):
+    #     # XXX: This computes a hash of a dictionary, but currently we don't
+    #     # protect dictionary from being changed so any use site modifications
+    #     # will make hashing go wrong. Use this feature with caution until we
+    #     # figure out how to make a safe API without compromising speed of this
+    #     # low-level class.
+    #     _hash = self._hash
+    #     if _hash is None:
+    #         self._hash = _hash = hash((self.ring, frozenset(self.items())))
+    #     return _hash
+    #
+    # def _hashable_content(self):
+    #     return tuple(self.items()) + self.gens
 
     def copy(self):
         """Return a copy of quasi polynomial self."""
         return self.new(self)
 
     def subs(self, x, a=None):
+        # TODO
+        raise NotImplementedError
         if isinstance(x, list) and a is None:
             f = self.copy()
             for X, a in x:
@@ -72,7 +148,6 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
         for monom, coeff in self.iterterms():
             terms[monom.subs(x,a)] = coeff.subs(x,a)
         syms = [s.subs(x,a) for s in ring.symbols]
-        raise NotImplementedError
 
     def as_expr(self):
         return self.dict_to_expr(self.to_dict(), *self.ring.symbols)
@@ -119,22 +194,6 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
     def is_term(self):
         return len(self) <= 1
 
-    # @property
-    # def is_negative(self):
-    #     return self.ring.domain.is_negative(self.LC)
-    #
-    # @property
-    # def is_positive(self):
-    #     return self.ring.domain.is_positive(self.LC)
-    #
-    # @property
-    # def is_nonnegative(self):
-    #     return self.ring.domain.is_nonnegative(self.LC)
-    #
-    # @property
-    # def is_nonpositive(self):
-    #     return self.ring.domain.is_nonpositive(self.LC)
-
     @property
     def is_zero(f):
         return not f
@@ -142,22 +201,6 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
     @property
     def is_one(f):
         return f == f.ring.one
-
-    # def __new__(cls, rep, *gens):
-    #     """Create a new quasipolynomial instance out of something useful."""
-    #     if isinstance(rep, QPoly):
-    #         return cls.from_dict(rep.as_dict(), *gens)
-    #     if isinstance(rep, dict):
-    #         return cls.from_dict(rep, *gens)
-    #     elif isinstance(rep, list):
-    #         return cls.from_list(rep, *gens)
-    #     elif isinstance(rep, sp.Add):
-    #         if any(isinstance(arg, QPoly) for arg in rep.args):
-    #             return cls(reduce(lambda f, g: f + g, rep.args), *gens)
-    #
-    #     # last resort
-    #     rep = sp.sympify(rep, evaluate=type(rep) is not str)
-    #     return cls.from_expr(rep, *gens)
 
     @classmethod
     def from_qpoly(cls, expr, ring: Ring):
@@ -578,10 +621,6 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify, dict):
     def _eval_is_polynomial(self, gens):
         return False
 
-    # @staticmethod
-    # def _get_coeff_domain(*c_gens):
-    #     return sp.EX.frac_field(*c_gens)
-
     def as_numer_denom(self):
         """
         Return QuasiPolynomial with coefficient numerators as well as their common denominator
@@ -834,21 +873,7 @@ class QuasiPolynomialRing(Ring):
     def convert_from(self, element, base):
         if not base.is_Composite:
             return self(base.to_sympy(element))
-        # elif self.of_type(element):
         return self(base.to_sympy(element))
-
-        # return QuasiPolynomialElement(element.to_sympy(), base.symbols)
-        raise CoercionFailed("Implement more, I guess?")
-
-    # def unify(K0, K1, symbols=None):
-    #     if K1.
-    #     raise NotImplementedError
-
-    # def of_type(self, element):
-    #     if element.domain == self.domain:
-    #         return True
-    #     else:
-    #         return False
 
 
 class QPoly(sp.Basic):
