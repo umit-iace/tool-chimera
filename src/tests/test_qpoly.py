@@ -1,4 +1,5 @@
 import sympy as sp
+from sympy import ZZ, QQ, RR, EX
 from sympy.polys.fields import FracElement
 from sympy.polys.rings import PolyElement
 
@@ -9,7 +10,7 @@ sigma = sp.Symbol("sigma", positive=True)
 s = sp.Symbol("s")
 
 # fields and rings
-cd = sp.EX.frac_field(s)
+cd = EX.poly_ring(s)
 qr = QuasiPolynomialRing(cd, sigma)
 
 # some symbols
@@ -99,9 +100,9 @@ def case_7():
 
 
 def test_from_expr():
-    for c in [case_0, case_1, case_2, case_3, case_4, case_5]:
+    for c in [case_0, case_1, case_2, case_3, case_4, case_5, case_6, case_7]:
         for expr in c():
-            q = QuasiPolynomialElement.from_expr(expr, qr)
+            q = QuasiPolynomialElement.from_expr(qr, expr)
             err = expr - q.as_expr()
             err = err.simplify()
             assert err == 0
@@ -121,13 +122,14 @@ def test_dict_from_expr():
 
 
 def test_add():
-    f = QuasiPolynomialElement.from_expr(sp.Integer(0), qr)
-    assert f + 1 == 1
+    f = QuasiPolynomialElement.from_expr(qr, 0)
+    f += 1
+    assert f == 1
 
     for c in [case_0, case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
-        fg = QuasiPolynomialElement.from_expr(f, qr)
-        gg = QuasiPolynomialElement.from_expr(g, qr)
+        fg = QuasiPolynomialElement.from_expr(qr, f)
+        gg = QuasiPolynomialElement.from_expr(qr, g)
         rg = fg + gg
         err = f + g - rg.as_expr()
         assert err.simplify() == 0
@@ -136,18 +138,21 @@ def test_add():
 def test_sub():
     for c in [case_0, case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
-        fg = QuasiPolynomialElement.from_expr(f, qr)
-        gg = QuasiPolynomialElement.from_expr(g, qr)
+        r = f - g
+
+        fg = QuasiPolynomialElement.from_expr(qr, f)
+        gg = QuasiPolynomialElement.from_expr(qr, g)
         rg = fg - gg
-        err = f - g - rg.as_expr()
+
+        err = r - rg.as_expr()
         assert err.simplify() == 0
 
 
 def test_mul():
     for c in [case_0, case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
-        fg = QuasiPolynomialElement.from_expr(f, qr)
-        gg = QuasiPolynomialElement.from_expr(g, qr)
+        fg = QuasiPolynomialElement.from_expr(qr, f)
+        gg = QuasiPolynomialElement.from_expr(qr, g)
         rg = fg * gg
         err = f * g - rg.as_expr()
         assert err.simplify() == 0
@@ -156,8 +161,8 @@ def test_mul():
 def test_div():
     for c in [case_0, case_1, case_2, case_3, case_4, case_5, case_6]:
         f, g = c()
-        fg = QuasiPolynomialElement.from_expr(f, qr)
-        gg = QuasiPolynomialElement.from_expr(g, qr)
+        fg = QuasiPolynomialElement.from_expr(qr, f)
+        gg = QuasiPolynomialElement.from_expr(qr, g)
         glm = gg.LM()
         rg = fg / glm
         err = fg - glm * rg
@@ -167,7 +172,7 @@ def test_div():
 def test_as_numer_denom():
     for c in [case_0, case_1, case_2, case_3, case_4, case_5, case_6, case_7]:
         for expr in c():
-            xp = QuasiPolynomialElement.from_expr(expr, qr)
+            xp = QuasiPolynomialElement.from_expr(qr, expr)
             num, den = xp.as_numer_denom()
             if num:
                 assert isinstance(num, QuasiPolynomialElement)
@@ -191,7 +196,7 @@ def test_diff():
     ]:
         for expr in c():
             expr_deriv = expr.subs(sigma, sp.exp(s))
-            qp_deriv = QuasiPolynomialElement.from_expr(expr, qr)
+            qp_deriv = QuasiPolynomialElement.from_expr(qr, expr)
             for k in range(5):
                 expr_deriv = expr_deriv.diff(s)
                 qp_deriv = qp_deriv.diff(s)

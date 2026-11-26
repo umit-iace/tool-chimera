@@ -273,14 +273,14 @@ def get_term(
         lc = tc = _p.ring.zero
         for e, c in _p.items():
             (_lc, _ld), (_tc, _td) = _handle_fracelement(c)
-            _lc = QuasiPolynomialElement.from_dict({e: _lc}, _p.ring)
+            _lc = QuasiPolynomialElement.from_dict(_p.ring, {e: _lc})
             if _ld == ld:
                 lc += _lc
             elif _ld > ld:
                 ld = _ld
                 lc = _lc
 
-            _tc = QuasiPolynomialElement.from_dict({e: _tc}, _p.ring)
+            _tc = QuasiPolynomialElement.from_dict(_p.ring, {e: _tc})
             if _td == td:
                 tc += _tc
             elif _td < td:
@@ -326,7 +326,7 @@ def get_term(
 
     raise ValueError
     # last resort, try to parse as quasipolynomial
-    p = QuasiPolynomialElement.from_expr(e, sym)
+    p = QuasiPolynomialElement.from_expr(sym, e)
     return _handle_qpoly(p)
 
 

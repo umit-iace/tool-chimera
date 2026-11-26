@@ -4,14 +4,14 @@ from operator import ge, gt, le, lt
 from typing import Any, Union, Dict
 
 import sympy as sp
-from sympy import CoercionFailed, ExactQuotientFailed
+from sympy import CoercionFailed, ExactQuotientFailed, PolynomialRing
 from sympy.core.numbers import S
 from sympy.core.sympify import CantSympify
 from sympy.polys.domains.domain import DomainElement
 from sympy.polys.domains.ring import Ring
 from sympy.polys.fields import FracElement
 from sympy.polys.orderings import lex
-from sympy.polys.rings import PolyElement
+from sympy.polys.rings import PolyElement, PolyRing
 from sympy.printing.defaults import DefaultPrinting
 
 __all__ = ["QPoly", "QuasiPolynomialElement", "QuasiPolynomialRing"]
@@ -111,13 +111,12 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
 
     def __init__(self, ring, numer, denom=None, normalize=True):
         self.ring = ring
-
         P = ring.domain  # Polynomial domain K[s]
 
         numer = {
             exp: P.convert(coeff)  # this will fail if a FractionElement is provided
             for exp, coeff in numer.items()
-            if coeff
+            if coeff  # this will filter zero coefficients
         }
 
         if denom is None:
@@ -127,7 +126,7 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
 
         if not denom:
             raise ZeroDivisionError("zero quasipolynomial denominator")
-        if ring.symbols[0] in denom:
+        if ring.symbols[0] in denom.ring.symbols:
             raise ValueError("Denominator must no contain any shift operators")
 
         if not numer:
@@ -135,7 +134,7 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
         elif normalize:
             numer, denom = self.normalize_fraction(numer, denom)
         else:
-            numer, denom = self.normalize_denominator(numer, denom)
+            numer, denom = self.normalize_denominator(ring, numer, denom)
 
         self._numer = numer
         self._denom = denom
@@ -143,7 +142,7 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
         self._degmin = None
         self._degmax = None
 
-    def new(self, numer, denom, normalize):
+    def new(self, numer, denom=None, normalize=True):
         """Create a new quasi polynomial element in the same ring."""
         return self.__class__(self.ring, numer, denom, normalize)
 
@@ -192,17 +191,25 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
         syms = [s.subs(x, a) for s in ring.symbols]
 
     def as_expr(self):
-        return self.dict_to_expr(self.to_dict(), *self.ring.symbols)
+        den_expr = self._denom.as_expr()
+        rat_coeffs = {
+            exp: coeff.as_expr() / den_expr
+            for exp, coeff in self._numer.items()
+        }
+        return self.dict_to_expr(rat_coeffs, *self.ring.symbols)
+
+    def __bool__(f):
+        return len(f._numer) > 0
 
     def __eq__(q1, q2):
         if not q2:
             return not q1
-        elif q1.ring.is_element(q2):
-            return dict.__eq__(q1, q2)
-        elif len(q1) > 1:
-            return False
-        else:
-            return q1.get(q1.ring.zero_monom) == q2
+
+        q2 = q1.ring.convert(q2)
+        if q1._numer == q2._numer and q1._denom == q2._denom:
+            return True
+
+        return False
 
     def sort_key(self):
         return (len(self), self.terms())
@@ -228,7 +235,14 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
     # def to_dict(self):
     #     return dict(self)
 
+    @property
+    def numer(self):
+        """ Return the numerator as quasi polynomial. """
+        return self.new(self._numer, self.ring.domain.one, normalize=False)
+
+    @property
     def denom(self):
+        """ Return the denominator polynomial. """
         return self._denom
 
     @property
@@ -248,37 +262,55 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
         return f == f.ring.one
 
     @classmethod
-    def from_qpoly(cls, expr, ring: Ring):
-        return cls.from_dict(expr.as_dict(), ring)
+    def from_qpoly(cls, ring: Ring, expr):
+        """ For backward compatibility """
+        return cls.from_dict(ring, expr.as_dict())
 
     @classmethod
-    def from_expr(cls, expr: sp.Expr, ring: Ring):
-        return cls.from_dict(cls.dict_from_expr(expr, ring), ring)
+    def from_expr(cls, ring: Ring, expr: sp.Expr):
+        return cls.from_dict(ring, cls.dict_from_expr(expr, ring))
 
     @classmethod
-    def from_list(cls, exp_coeff_list: list[tuple], ring: Ring):
-        return cls.from_dict({k: v for k, v in exp_coeff_list}, ring)
+    def from_list(cls, ring: Ring, exp_coeff_list: list[tuple]):
+        return cls.from_dict(ring, {k: v for k, v in exp_coeff_list})
 
     @classmethod
-    def from_dict(cls, exp_coeff_map: dict, ring: Ring):
+    def from_dict(cls, ring: Ring, exp_coeff_map: dict):
         P = ring.domain
         F = P.get_field()
 
-        rat_numer = {}
-        den_gcd = P.one
-        for exp, rat_coeff in exp_coeff_map.items():
-            if not rat_coeff:
+        # convert everything to FractionElements
+        rat_coeffs = {}
+        for exp, coeff in exp_coeff_map.items():
+            if not coeff :
                 continue
 
-            if not isinstance(rat_coeff, DomainElement):
-                rat_coeff = F.from_sympy(rat_coeff)
+            if not isinstance(coeff , DomainElement):
+                coeff  = F.from_sympy(coeff)
 
-            rat_coeff = F.convert(rat_coeff)
-            rat_numer[exp] = rat_coeff
-            den_gcd = P.gcd(rat_coeff.denom)
+            coeff  = F.convert(coeff )
+            rat_coeffs[exp] = coeff
+        return cls.from_fraction_coefficients(ring, rat_coeffs)
 
-        numer = {exp: r_num * den_gcd for exp, r_num in rat_numer.items()}
-        return cls(ring, numer, den_gcd)
+    @classmethod
+    def from_fraction_coefficients(cls, ring: Ring, coeffs: dict):
+        P = ring.domain
+
+        if not coeffs:
+            return ring.zero
+
+        denom = P.one
+        for frac in coeffs.values():
+            denom = P.lcm(denom, frac.denom)
+
+        numer = {}
+        for exp, frac in coeffs.items():
+            scale = P.exquo(denom, frac.denom)
+            coeff = frac.numer * scale
+            if coeff:
+                numer[exp] = coeff
+
+        return cls(ring, numer, denom, normalize=True)
 
     def __pos__(self):
         return self
@@ -510,8 +542,8 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
         return c_cff
 
     def neg(f):
-        rd = {exp: -cff for exp, cff in f.items()}
-        return QuasiPolynomialElement.from_dict(rd, f.ring)
+        numer = {exp: -cff for exp, cff in f._numer.items()}
+        return f.new(numer, normalize=False)
 
     def sub(f, g):
         return f.add(-g)
@@ -578,14 +610,14 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
                     r_dict[rd] = r_dict[rd] + rc
                 else:
                     r_dict[rd] = rc
-        return QuasiPolynomialElement.from_dict(r_dict, f.ring)
+        return QuasiPolynomialElement.from_dict(f.ring, r_dict)
 
     def div_ground(f, g):
         g = sp.sympify(g)
         rd = {}
         for exp, cff in f.items():
             rd[exp] = cff / g
-        return QuasiPolynomialElement.from_dict(rd, f.ring)
+        return QuasiPolynomialElement.from_dict(f.ring, rd)
 
     def _qdiv(f, g):
         """
@@ -731,13 +763,12 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
         """
         q_gen = ring.symbols[0]
 
+        expr = sp.sympify(expr)
         if expr.is_Poly:
             if expr.gen == q_gen:
                 return expr.as_dict()
             else:
                 expr = expr.as_expr()
-        else:
-            expr = sp.sympify(expr)
 
         w = sp.Wild("w")
         if not isinstance(q_gen, sp.Symbol):
@@ -787,24 +818,20 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
     def LT(self):
         """ Return the leading term """
         dm = self.degmax()
-        return QuasiPolynomialElement.from_list(
-            [(dm, self.coeff(dm))], self.ring
-        )
+        return QuasiPolynomialElement.from_list(self.ring, [(dm, self.coeff(dm))])
 
     def TT(self):
         """ Return the trailing term """
         dm = self.degmin()
-        return QuasiPolynomialElement.from_list(
-            [(dm, self.coeff(dm))], self.ring
-        )
+        return QuasiPolynomialElement.from_list(self.ring, [(dm, self.coeff(dm))])
 
     def LM(self, s_dict: dict = None):
         """ Return the leading monom """
-        return QuasiPolynomialElement.from_dict({self.degmax(): 1}, self.ring)
+        return QuasiPolynomialElement.from_dict(self.ring, {self.degmax(): 1})
 
     def TM(self, s_dict: dict = None):
         """Return the trailing monom"""
-        return QuasiPolynomialElement.from_dict({self.degmin(): 1}, self.ring)
+        return QuasiPolynomialElement.from_dict(self.ring, {self.degmin(): 1})
 
     def LC(self, s_dict: dict = None) -> sp.Expr:
         """Return the Leading coefficient"""
@@ -830,7 +857,7 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
 
     def coeff_fraction(self, exp):
         P = self.ring.domain
-        return P.to_field(self._numer.get(exp, self.ring.domain.zero), self._denom)
+        return P.get_field(self._numer.get(exp, self.ring.domain.zero), self._denom)
 
     def iterterms(self):
         """Iterator over terms of a quasipolynomial. """
@@ -896,9 +923,9 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
                 for exp, coeff in numer.items()
             }
 
-        return self.normalize_denominator(numer, denom, r)
+        return self.normalize_denominator(r, numer, denom)
 
-    def normalize_denominator(cls, numer: Dict[sp.Expr, DomainElement], denom: DomainElement, ring):
+    def normalize_denominator(cls, ring: Ring, numer: Dict[sp.Expr, DomainElement], denom: DomainElement):
         P = ring.domain
         K = P.domain
         d_lc = denom.LC
@@ -953,47 +980,47 @@ class QuasiPolynomialRing(Ring):
 
     def is_element(self, element):
         """True if ``element`` is an element of this ring. False otherwise."""
-        return isinstance(element, QuasiPolynomialElement) and element.ring == self
+        return isinstance(element, self.dtype) and element.ring == self
 
     def domain_new(self, element, orig_domain=None):
         return self.domain.convert(element, orig_domain)
 
     def ground_new(self, coeff):
-        return self.term_new(0, coeff)
-
-    def term_new(self, monom, coeff):
         coeff = self.domain_new(coeff)
-        qpoly = self.zero
-        if coeff:
-            qpoly[monom] = coeff
-        return qpoly
+        return self.dtype(self, {0: coeff}, self.domain.one, False)
 
     def ring_new(self, element):
-        if isinstance(element, QuasiPolynomialElement):
-            if self == element.ring:
-                return element
-            elif (
-                    isinstance(self.domain, QuasiPolynomialElement)
-                    and self.domain.ring == element.ring
+        P = self.domain
+        K = P.domain
+        if self.is_element(element):
+            return element
+        elif (
+                isinstance(P, PolynomialRing) and P.of_type(element)
+            or
+                isinstance(P, PolyRing) and P.is_element(element)
             ):
-                return self.ground_new(element)
-            else:
-                raise NotImplementedError("conversion")
+            return self.ground_new(element)
+        elif isinstance(element, K.dtype):
+            return P.ground_new(element)
         elif isinstance(element, str):
             raise NotImplementedError("parsing")
         elif isinstance(element, dict):
-            return QuasiPolynomialElement.from_dict(element, self)
+            return self.dtype.from_dict(self, element)
         elif isinstance(element, list):
-            return QuasiPolynomialElement.from_list(element, self)
+            return self.dtype.from_list(self, element)
         elif isinstance(element, sp.Expr):
-            return QuasiPolynomialElement.from_expr(element, self)
+            return self.dtype.from_expr(self, element)
         else:
             return self.ground_new(element)
 
     __call__ = ring_new
 
     def from_sympy(self, a):
-        return QuasiPolynomialElement.from_expr(a, self)
+        return self.dtype.from_expr(self, a)
+
+    def from_ZZ(K1, a, K0):
+        """Convert a Python `int` object to `dtype`. """
+        return K1(K1.domain.convert(a, K0))
 
     def to_domain(self):
         return QuasiPolynomialRing(self, self.symbols)
