@@ -5,7 +5,7 @@ from sympy import ZZ, QQ, RR, EX
 from sympy.polys.fields import FracElement
 from sympy.polys.rings import PolyElement
 
-from chimera.qpoly import QuasiPolynomialElement, QuasiPolynomialRing, CachedPoly
+from chimera.qpoly import QuasiPolynomialElement, QuasiPolynomialRing, CachedPoly, hermite_interpolator
 
 # generators
 sigma = sp.Symbol("sigma", positive=True)
@@ -266,3 +266,23 @@ def test_cached_poly():
     assert cp._factors is None
     # the entries should be updated on the next call
     assert p.factor_list() == cp.factor_list()
+
+
+def test_hermite_interpolator():
+    f, _ = case_6()
+    roots = {
+        1: 1,
+        2: 1,
+        3: 1,
+    }
+    fq = QuasiPolynomialElement.from_expr(qr, f)
+    hp = hermite_interpolator(fq, roots)
+    h = hp.as_expr()
+    sp.pprint(hp, wrap_line=False)
+    for r,k in roots.items():
+        for j in range(k-1):
+            assert j == 0
+            assert f.diff(s,j).subs(s,r) == hp.diff(s).subs(s,r)
+
+    sp.plot(f.subs(sigma, sp.exp(s)), (s, 0,5))
+    sp.plot(h, (s, 0, 5))

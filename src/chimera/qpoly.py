@@ -316,6 +316,28 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
 
         return cls(ring, numer, denom, normalize=True)
 
+    def evaluate(self, val):
+        coeff_dom  = self.ring.domain
+        var = coeff_dom.symbols[0]
+
+        ev_denom = self._denom(val)
+        ev_numer = coeff_dom.zero
+        for exp, coeff in f._numer.items():
+            ev_numer += sp.exp(exp * val) * coeff(val)
+
+        if ev_denom == coeff_dom.zero:
+            if ev_numer == coeff_dom.zero:
+                new_numer = self.numer.diff(var)
+                new_denom = ev_denom.diff(var)
+                return self.new(new_numer, new_denom)(val)
+            else:
+                raise ValueError("Qpolys must not contain poles")
+        else:
+            return ev_numer / ev_denom
+
+    def __call__(self, val):
+        return self.evaluate(val)
+
     def __pos__(self):
         return self
 
@@ -1436,3 +1458,53 @@ def chop_poly(p, tol):
     ring = p.ring
     d = {m: c for m, c in p.terms() if abs(c) >= tol}
     return ring.from_dict(d)
+
+
+def hermite_interpolator(q: QuasiPolynomialElement, roots):
+    """
+    Construct the unique polynomial h with degree < D such that
+
+        h^(j)(lambda_i) = f^(j)(lambda_i),
+        j = 0, ..., multiplicity_i - 1.
+
+    Parameters
+    ----------
+    q:
+        Quasipolynomial with polynomial coefficients.
+    roots:
+        Dictionary {root: multiplicity}.
+
+    Returns
+    -------
+    h:
+        Hermite interpolation polynomial.
+    """
+    ring = q.ring
+    coeff_ring = ring.domain
+    var = coeff_ring.symbols[0]
+
+    # create coefficients
+    D = sum(roots.values())
+    p_dict = sp.symbols(f"c0:{D}")
+
+    h_trial = sum(p_dict[k] * var**k for k in range(D))
+
+    equations = []
+    q_derivs = [q.as_expr().subs(q.gen, sp.exp(var))]
+    h_derivs = [h_trial]
+    for root, multiplicity in roots.items():
+        for j in range(multiplicity):
+            if len(q_derivs) <= j:
+                q_derivs.append(q_derivs[j-1].diff(var))
+                h_derivs.append(h_derivs[j-1].diff(var))
+
+            lhs = h_derivs[j].subs(var, root)
+            rhs = q_derivs[j].subs(var, root)
+            equations.append(lhs - rhs)
+
+    solution = sp.solve(equations, p_dict, dict=True)
+    if not solution:
+        raise ValueError("The Hermite interpolation system has no solution.")
+
+    h = coeff_ring(h_trial.subs(solution[0]))
+    return h
