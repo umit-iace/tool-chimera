@@ -247,11 +247,15 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
 
     @property
     def is_monomial(self):
-        return not self or (len(self) == 1 and self.LC() == 1)
+        return not self or len(self._numer) == 1
 
     @property
-    def is_term(self):
-        return len(self) <= 1
+    def is_monic(self):
+        return self.coeff_numer(self.degmax()) == self.ring.domain.one
+
+    @property
+    def is_primitive_monomial(self):
+        return self.is_monomial and not self.is_monic
 
     @property
     def is_zero(f):
@@ -338,127 +342,35 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
 
     def __divmod__(f, g):
         ring = f.ring
-
-        if not g:
-            raise ZeroDivisionError("polynomial division")
-        elif ring.is_element(g):
-            return f.div(g)
-        elif isinstance(g, QuasiPolynomialElement):
-            if isinstance(ring.domain, QuasiPolynomialRing) and ring.domain.ring == g.ring:
-                pass
-            elif isinstance(g.ring.domain, QuasiPolynomialRing) and g.ring.domain.ring == ring:
-                return g.__rdivmod__(f)
-            else:
-                return NotImplemented
-
-        try:
-            g = ring.domain_new(g)
-        except CoercionFailed:
-            return NotImplemented
-        else:
-            return f.div(g)
+        g = ring.convert(g)
+        return f.div(g)
 
     def __rdivmod__(f, g):
         ring = f.ring
-        try:
-            g = ring.ground_new(g)
-        except CoercionFailed:
-            return NotImplemented
-        else:
-            return g.div(f)
+        g = ring.convert(g)
+        return g.div(f)
 
     def __mod__(f, g):
-        ring = f.ring
-
-        if not g:
-            raise ZeroDivisionError("polynomial division")
-        elif ring.is_element(g):
-            return f.div(g)[1]
-        elif isinstance(g, QuasiPolynomialElement):
-            if isinstance(ring.domain, QuasiPolynomialRing) and ring.domain.ring == g.ring:
-                pass
-            elif isinstance(g.ring.domain, QuasiPolynomialRing) and g.ring.domain.ring == ring:
-                return g.__rmod__(f)
-            else:
-                return NotImplemented
-
-        try:
-            g = ring.domain_new(g)
-        except CoercionFailed:
-            return NotImplemented
-        else:
-            return f.div_ground(g)[1]
+        return f.div(g)[1]
 
     def __rmod__(f, g):
-        ring = f.ring
-        try:
-            g = ring.ground_new(g)
-        except CoercionFailed:
-            return NotImplemented
-        else:
-            return g.rem(f)
+        return g.div(f)[1]
 
     def __floordiv__(f, g):
-        ring = f.ring
-
-        if not g:
-            raise ZeroDivisionError("polynomial division")
-        elif ring.is_element(g):
-            return f.div(g)[0]
-        elif isinstance(g, QuasiPolynomialElement):
-            if isinstance(ring.domain, QuasiPolynomialRing) and ring.domain.ring == g.ring:
-                pass
-            elif isinstance(g.ring.domain, QuasiPolynomialRing) and g.ring.domain.ring == ring:
-                return g.__rtruediv__(f)
-            else:
-                return NotImplemented
-
-        try:
-            g = ring.domain_new(g)
-        except CoercionFailed:
-            return NotImplemented
-        else:
-            return f.div_ground(g)
+        return f.__divmod__(g)[0]
 
     def __rfloordiv__(f, g):
-        ring = f.ring
-        try:
-            g = ring.ground_new(g)
-        except CoercionFailed:
-            return NotImplemented
-        else:
-            return g.div(f)[0]
+        return g.__rdivmod__(f)[0]
 
     def __truediv__(f, g):
         ring = f.ring
-
-        if not g:
-            raise ZeroDivisionError("polynomial division")
-        elif ring.is_element(g):
-            return f.exquo(g)
-        elif isinstance(g, QuasiPolynomialElement):
-            if isinstance(ring.domain, QuasiPolynomialRing) and ring.domain.ring == g.ring:
-                pass
-            elif isinstance(g.ring.domain, QuasiPolynomialRing) and g.ring.domain.ring == ring:
-                return g.__rtruediv__(f)
-            else:
-                return NotImplemented
-
-        try:
-            g = ring.domain_new(g)
-        except CoercionFailed:
-            return NotImplemented
-        else:
-            return f.quo_ground(g)
+        g = ring.convert(g)
+        return f.exquo(g)
 
     def __rtruediv__(f, g):
         ring = f.ring
-        try:
-            g = ring.ground_new(g)
-        except CoercionFailed:
-            return NotImplemented
-        else:
-            return g.exquo(f)
+        g = ring.convert(g)
+        return g.exquo(f)
 
     def __pow__(self, n):
         """ raise quasipolynomial to power `n` """
@@ -468,8 +380,8 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
                 return ring.one
             else:
                 raise ValueError("0**0")
-        elif len(self) == 1:
-            monom, coeff = list(self.items())[0]
+        elif len(self._numer) == 1:
+            monom, coeff = list(self._numer.items())[0]
             p = ring.zero
             p[monom * n] = coeff ** n
             return p
@@ -612,17 +524,19 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
                     r_dict[rd] = rc
         return QuasiPolynomialElement.from_dict(f.ring, r_dict)
 
-    def div_ground(f, g):
-        g = sp.sympify(g)
-        rd = {}
-        for exp, cff in f.items():
-            rd[exp] = cff / g
-        return QuasiPolynomialElement.from_dict(f.ring, rd)
+    # def div_ground(f, g):
+    #     g = sp.sympify(g)
+    #     rd = {}
+    #     for exp, cff in f.items():
+    #         rd[exp] = cff / g
+    #     return QuasiPolynomialElement.from_dict(f.ring, rd)
 
     def _qdiv(f, g):
         """
         Quasipolynomial long division
         """
+        if g.degree() > f.degree():
+            raise ValueError("Ambiguous data: dividend has higher degree than divisor.")
         g_dmax = g.degmax()
         g_dmin = g.degmin()
 
@@ -632,17 +546,18 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
             r_dmax = r.degmax()
             r_dmin = r.degmin()
 
-            max_done = r_dmax < g_dmax
-            min_done = r_dmin > g_dmin
+            max_done = r_dmax <= g_dmax
+            min_done = r_dmin >= g_dmin
 
             if not max_done:
                 mode = "leading"
             elif not min_done:
-                mode = "leading"
+                mode = "trailing"
             else:
                 break
 
-            q_k = f.boundary_ratio(g, mode=mode)
+            q_k = r.boundary_ratio(g, mode=mode)
+            # TODO: missing correction factor
 
             r = r - q_k * g
             q = q + q_k
@@ -650,12 +565,21 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
         return q, r
 
     def div(f, g):
-        if not isinstance(g, QuasiPolynomialElement):
-            return f.div_ground(g)
-        assert f.ring.is_element(g)
-        assert not g.is_zero
+        R = f.ring
+        P = R.domain
+
+        if P.of_type(g):
+            return f.new(f.numer, f.denom * g)
+        if not R.is_element(g):
+            g = R.convert(g)
+
+        if g.is_zero:
+            raise ZeroDivisionError()
         if g.is_one:
-            return f, f.ring.zero
+            return f, R.zero
+        if g.is_monomial:
+            return f.quo_monom(g), R.zero
+
         return f._qdiv(g)
 
     def rdiv(f, g):
@@ -663,59 +587,31 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
         g = f.ring(g)
         return g.mul(fi)
 
-    def quo_ground(f, x):
-        domain = f.ring.domain
+    def _monom_div(f, g):
+        """ Divide the Quasipolynomial monoms """
+        g_exp, g_coeff = list(g._numer.items())[0]
+        g_den = g.denom
 
-        if not x:
-            raise ZeroDivisionError('polynomial division')
-        if not f or x == domain.one:
+        denom = f.denom * g_coeff
+        numer = {
+            exp - g_exp: coeff * g_den
+            for exp, coeff in f._numer.items()
+        }
+        return f.new(numer, denom, True)
+
+    def quo_monom(f, g):
+        if not g or len(g._numer) != 1:
+            raise ZeroDivisionError()
+        if g.is_one:
             return f
+        return f._monom_div(g)
 
-        if domain.is_Field:
-            quo = domain.quo
-            terms = [(monom, quo(coeff, x)) for monom, coeff in f.iterterms()]
-        else:
-            terms = [(monom, coeff // x) for monom, coeff in f.iterterms() if not (coeff % x)]
-
-        return f.new(terms)
-
-    def _term_div(self, a_lm_a_lc, b_lm_b_lc):
-        """ Copied from PolyElement """
-        zm = self.ring.zero_monom
-        domain = self.ring.domain
-        domain_quo = domain.quo
-
-        a_lm, a_lc = a_lm_a_lc
-        b_lm, b_lc = b_lm_b_lc
-        if b_lm == zm:  # apparently this is a very common case
-            monom = a_lm
-        else:
-            monom = a_lm - b_lm
-
-        if monom is not None:
-            return monom, domain_quo(a_lc, b_lc)
-        else:
-            return None
-
-    def quo_term(f, term):
-        monom, coeff = term
-
-        if not coeff:
-            raise ZeroDivisionError("polynomial division")
-        elif not f:
-            return f.ring.zero
-        elif monom == f.ring.zero_monom:
-            return f.quo_ground(coeff)
-
-        terms = [f._term_div(t, term) for t in f.iterterms()]
-        return f.new([t for t in terms if t is not None])
-
-    def exquo(f, G):
-        q, r = f.div(G)
+    def exquo(f, g):
+        q, r = f.div(g)
         if not r:
             return q
         else:
-            raise ExactQuotientFailed(f, G)
+            raise ExactQuotientFailed(f, g)
 
     def _unify_coeffs(self, fc, gc) -> tuple[Any, Any]:
         new_dom = fc.field.to_domain().unify(gc.field.to_domain())
@@ -730,7 +626,7 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
         """
         Return QuasiPolynomial with coefficient polynomials and their normalized common denominator
         """
-        return self._numer, self._denom
+        return self.numer, self.denom
 
     @staticmethod
     def dict_to_expr(exp_coeff_map: dict, *gens: sp.Symbol) -> sp.Expr:
@@ -798,7 +694,7 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
 
     def degmax(self) -> sp.Expr:
         if self._degmax is None:
-            self._degmax = self._smin(self.exponents(), default=sp.S.Infinity)
+            self._degmax = self._smax(self.exponents(), default=sp.S.Infinity)
         return self._degmax
 
     def _smax(self, args, default=0):
@@ -818,30 +714,28 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
     def LT(self):
         """ Return the leading term """
         dm = self.degmax()
-        return QuasiPolynomialElement.from_list(self.ring, [(dm, self.coeff(dm))])
+        return self.new({dm: self.coeff_fraction(dm)})
 
     def TT(self):
         """ Return the trailing term """
         dm = self.degmin()
-        return QuasiPolynomialElement.from_list(self.ring, [(dm, self.coeff(dm))])
+        return self.new({dm: self.coeff_fraction(dm)})
 
-    def LM(self, s_dict: dict = None):
+    def LM(self):
         """ Return the leading monom """
-        return QuasiPolynomialElement.from_dict(self.ring, {self.degmax(): 1})
+        return self.new({self.degmax(): 1})
 
-    def TM(self, s_dict: dict = None):
+    def TM(self):
         """Return the trailing monom"""
-        return QuasiPolynomialElement.from_dict(self.ring, {self.degmin(): 1})
+        return self.new({self.degmin(): 1})
 
-    def LC(self, s_dict: dict = None) -> sp.Expr:
+    def LC(self) -> sp.Expr:
         """Return the Leading coefficient"""
-        ld = self.degmax(s_dict)
-        return self.coeff(ld)
+        return self.coeff_fraction(self.degmax())
 
-    def TC(self, s_dict: dict = None) -> sp.Expr:
+    def TC(self) -> sp.Expr:
         """Return the Trailing coefficient"""
-        td = self.degmin(s_dict)
-        return self.coeff(td)
+        return self.coeff_fraction(self.degmin())
 
     def exponents(self) -> list[sp.Expr]:
         return list(self._numer.keys())
@@ -881,15 +775,15 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
         g = ring.convert(g)
 
         if mode == "leading":
-            r_deg = f.degmax
-            g_deg = g.degmax
+            f_deg = f.degmax()
+            g_deg = g.degmax()
         elif mode == "trailing":
-            r_deg = f.degmin
-            g_deg = g.degmin
+            f_deg = f.degmin()
+            g_deg = g.degmin()
         else:
             raise ValueError("Invalid mode")
 
-        f_num = f.coeff_numer(r_deg)
+        f_num = f.coeff_numer(f_deg)
         g_num = g.coeff_numer(g_deg)
 
         if not g_num:
@@ -898,7 +792,7 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
         quotient_num = f_num * g._denom
         quotient_den = g_num * f._denom
 
-        return f.new(quotient_num, quotient_den, True)
+        return f.new({f_deg - g_deg: quotient_num}, quotient_den, True)
 
     @staticmethod
     def normalize_fraction(poly_ring, numer: Dict[sp.Expr, DomainElement], denom: DomainElement):
@@ -961,8 +855,6 @@ class QuasiPolynomialRing(Ring):
 
         self.symbols = (shift_symbol,)
         self.order = sp.polys.orderings.monomial_key(order)
-
-        self.zero_monom = 0
 
     def __str__(self):
         return str(self.domain) + "{" + ",".join(map(str, self.symbols)) + "}"

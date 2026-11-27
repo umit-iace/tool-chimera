@@ -1,3 +1,5 @@
+import pytest
+
 import sympy as sp
 from sympy import ZZ, QQ, RR, EX
 from sympy.polys.fields import FracElement
@@ -198,7 +200,7 @@ def test_mul():
 
 
 def test_div():
-    for c in [case_0, case_1, case_2, case_3, case_4, case_5, case_6]:
+    for c in [ case_0, case_1, case_2, case_3, case_4, case_5, case_6]:
         f, g = c()
         fg = QuasiPolynomialElement.from_expr(qr, f)
         gg = QuasiPolynomialElement.from_expr(qr, g)
@@ -207,26 +209,24 @@ def test_div():
         err = fg - glm * rg
         assert err.as_expr().simplify() == 0
 
+        quo, rem = fg.__divmod__(gg)
+        err = f - quo.as_expr() * g - rem.as_expr()
+        assert err.simplify() == 0
+
 
 def test_as_numer_denom():
     for c in [case_0, case_1, case_2, case_3, case_4, case_5, case_6, case_7]:
         for expr in c():
             xp = QuasiPolynomialElement.from_expr(qr, expr)
             num, den = xp.as_numer_denom()
-            if num:
-                assert isinstance(num, QuasiPolynomialElement)
-                for cff in num.coefficients():
-                    if isinstance(cff, PolyElement):
-                        continue
-                    if isinstance(cff, FracElement) and cff.denom == 1:
-                        continue
-                    raise TypeError("Numerator coeffs are not polynomial")
-            assert not isinstance(den, FracElement)
-            print(f"Numerator: {num}, Denominator: {den}")
+            assert isinstance(num, QuasiPolynomialElement)
+            assert num.denom == cd.one
+            assert cd.of_type(den)
             err = num.as_expr() / den.as_expr() - expr
             assert err.simplify() == 0
 
 
+@pytest.mark.skip(reason="Not implemented yet")
 def test_diff():
     for c in [
         case_0, case_1, case_2, case_3, case_4,

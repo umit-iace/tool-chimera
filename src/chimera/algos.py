@@ -555,7 +555,7 @@ def make_entire_vec(
 
     # divide num vector by den
     den_term = (den_mon.exponents()[0], den_poly_lc)
-    num_vec_n = num_vec.applyfunc(lambda e: e.quo_term(den_term))
+    num_vec_n = num_vec.applyfunc(lambda e: e.quo_monom(den_term))
 
     e_vec = []
     p_vec = []
