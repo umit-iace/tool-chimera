@@ -99,6 +99,38 @@ def case_7():
     return expr,
 
 
+def test_normalize_denominator():
+    numer = {
+        1: cd(2 * s**2 + 2*s + 2),
+        2: cd(4 * s ** 5 + 4 * s**3 + 4 * s**2),
+    }
+    denom = cd(2*(s-2))
+    n,d = QuasiPolynomialElement.normalize_denominator(cd, numer, denom)
+    assert d.LC == 1
+    assert n[1].LC == 1
+    assert n[2].LC == 2
+
+
+def test_normalize_fraction():
+    # no elimination
+    numer = {1: cd(2 * (s ** 2 + 1) * (s + 3))}
+    denom = cd(2*(s-2))
+    n,d = QuasiPolynomialElement.normalize_fraction(cd, numer, denom)
+
+    assert n[1].degree() == 3
+    assert n[1].LC == 1
+    assert d.LC == 1
+
+    # elimination
+    numer = {2: cd(2 * (s + 2) * (s - 2))}
+    denom = cd(2*(s-2))
+    n,d = QuasiPolynomialElement.normalize_fraction(cd, numer, denom)
+
+    assert n[2].degree() == 1
+    assert n[2].LC == 1
+    assert d.LC == 1
+
+
 def test_from_expr():
     for c in [case_0, case_1, case_2, case_3, case_4, case_5, case_6, case_7]:
         for expr in c():
@@ -109,9 +141,8 @@ def test_from_expr():
 
 
 def test_dict_from_expr():
-    for c in [case_0, case_1, case_2, case_3, case_4, case_5]:
-        f, g = c()
-        for expr in f, g:
+    for c in [case_0, case_1, case_2, case_3, case_4, case_5, case_6, case_7]:
+        for expr in c():
             s_dict = QuasiPolynomialElement.dict_from_expr(expr, qr)
             print(s_dict)
             test_expr = QuasiPolynomialElement.dict_to_expr(s_dict, *qr.symbols)
@@ -135,8 +166,16 @@ def test_add():
         assert err.simplify() == 0
 
 
+def test_neg():
+    for c in [case_0, case_1, case_2, case_3, case_4, case_5, case_6, case_7]:
+        for expr in c():
+            a = QuasiPolynomialElement.from_expr(qr, expr)
+            am = -a
+            assert am.as_expr().expand() == -a.as_expr().expand()
+
+
 def test_sub():
-    for c in [case_0, case_1, case_2, case_3, case_4, case_5]:
+    for c in [ case_0, case_1, case_2, case_3, case_4, case_5]:
         f, g = c()
         r = f - g
 

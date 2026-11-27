@@ -132,9 +132,9 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
         if not numer:
             denom = P.one
         elif normalize:
-            numer, denom = self.normalize_fraction(numer, denom)
+            numer, denom = self.normalize_fraction(P, numer, denom)
         else:
-            numer, denom = self.normalize_denominator(ring, numer, denom)
+            numer, denom = self.normalize_denominator(P, numer, denom)
 
         self._numer = numer
         self._denom = denom
@@ -543,7 +543,7 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
 
     def neg(f):
         numer = {exp: -cff for exp, cff in f._numer.items()}
-        return f.new(numer, normalize=False)
+        return f.new(numer, f.denom, normalize=False)
 
     def sub(f, g):
         return f.add(-g)
@@ -857,7 +857,7 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
 
     def coeff_fraction(self, exp):
         P = self.ring.domain
-        return P.get_field(self._numer.get(exp, self.ring.domain.zero), self._denom)
+        return P.get_field().field.new(self._numer.get(exp, self.ring.domain.zero), self._denom)
 
     def iterterms(self):
         """Iterator over terms of a quasipolynomial. """
@@ -900,12 +900,12 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
 
         return f.new(quotient_num, quotient_den, True)
 
-    def normalize_fraction(self, numer: Dict[sp.Expr, DomainElement], denom: DomainElement):
+    @staticmethod
+    def normalize_fraction(poly_ring, numer: Dict[sp.Expr, DomainElement], denom: DomainElement):
         """
         Perform a full normalisation
         """
-        r = self.ring
-        P = r.domain
+        P = poly_ring
 
         if not numer:
             return {}, P.one
@@ -923,11 +923,11 @@ class QuasiPolynomialElement(DomainElement, DefaultPrinting, CantSympify):
                 for exp, coeff in numer.items()
             }
 
-        return self.normalize_denominator(r, numer, denom)
+        return QuasiPolynomialElement.normalize_denominator(P, numer, denom)
 
-    def normalize_denominator(cls, ring: Ring, numer: Dict[sp.Expr, DomainElement], denom: DomainElement):
-        P = ring.domain
-        K = P.domain
+    @staticmethod
+    def normalize_denominator(poly_ring: Ring, numer: Dict[sp.Expr, DomainElement], denom: DomainElement):
+        K = poly_ring.domain
         d_lc = denom.LC
 
         if d_lc == K.one:
